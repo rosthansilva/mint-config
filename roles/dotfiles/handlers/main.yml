@@ -1,0 +1,4 @@
+---
+- import_tasks: theme_handlers.yml
+- import_tasks: icons_handlers.yml
+- import_tasks: firefox_handlers.yml

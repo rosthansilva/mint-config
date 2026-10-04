@@ -1,0 +1,14 @@
+---
+- name: "Instalar Colloid Icons"
+  shell: |
+    rm -rf /tmp/colloid-icons-repo
+    git clone --depth 1 https://github.com/vinceliuice/Colloid-icon-theme.git /tmp/colloid-icons-repo
+    cd /tmp/colloid-icons-repo
+    # Instalando com esquema Nord e cor padrão conforme o seu tema GTK
+    ./install.sh -s nord -t teal
+    
+    # Aplicando no sistema
+    gsettings set org.cinnamon.desktop.interface icon-theme "{{ icon_theme_name }}"
+    
+    rm -rf /tmp/colloid-icons-repo
+  listen: "Instalar Colloid Icons"

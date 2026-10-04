@@ -1,0 +1,61 @@
+---
+# Tecla Print abre o "flameshot gui" (seleção de área + anotações) no lugar
+# da captura nativa do Cinnamon. São duas partes:
+#   1. tirar o Print do atalho nativo (media-keys/screenshot), senão os dois
+#      disputam a mesma tecla e o Cinnamon ignora o atalho personalizado;
+#   2. criar um atalho personalizado "flameshot" e incluí-lo na custom-list,
+#      preservando atalhos personalizados que o usuário já tenha criado.
+
+- name: "Instalar Flameshot"
+  become: true
+  apt:
+    name: flameshot
+    state: present
+  tags: flameshot
+
+- name: "Liberar a tecla Print do atalho de captura nativo do Cinnamon"
+  shell: |
+    atual="$(dconf read /org/cinnamon/desktop/keybindings/media-keys/screenshot)"
+    if [ "$atual" != "@as []" ]; then
+      dconf write /org/cinnamon/desktop/keybindings/media-keys/screenshot "@as []"
+      echo changed
+    fi
+  register: flameshot_native
+  changed_when: "'changed' in flameshot_native.stdout"
+  tags: flameshot
+
+- name: "Configurar atalho personalizado do Flameshot (Print)"
+  shell: |
+    chave="/org/cinnamon/desktop/keybindings/custom-keybindings/flameshot/{{ item.key }}"
+    if [ "$(dconf read "$chave")" != {{ item.value | quote }} ]; then
+      dconf write "$chave" {{ item.value | quote }}
+      echo changed
+    fi
+  loop:
+    - { key: "name", value: "'Flameshot'" }
+    - { key: "command", value: "'flameshot gui'" }
+    - { key: "binding", value: "['Print']" }
+  register: flameshot_custom
+  changed_when: "'changed' in flameshot_custom.stdout"
+  tags: flameshot
+
+- name: "Ler a lista de atalhos personalizados do Cinnamon"
+  command: dconf read /org/cinnamon/desktop/keybindings/custom-list
+  register: flameshot_custom_list
+  changed_when: false
+  tags: flameshot
+
+# dconf devolve "['custom0', 'custom1']" (lista no formato GVariant, que o
+# YAML entende), "@as []" quando vazia, ou nada quando nunca foi definida.
+- name: "Incluir o Flameshot na lista de atalhos personalizados"
+  vars:
+    lista_atual: "{{ (flameshot_custom_list.stdout | replace('@as', '') | trim or '[]') | from_yaml }}"
+  command:
+    argv:
+      - dconf
+      - write
+      - /org/cinnamon/desktop/keybindings/custom-list
+      # GVariant usa aspas simples: ['custom0', 'flameshot']
+      - "[{{ (lista_atual + ['flameshot']) | map('regex_replace', '^(.*)$', \"'\\1'\") | join(', ') }}]"
+  when: "'flameshot' not in lista_atual"
+  tags: flameshot

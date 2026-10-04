@@ -1,0 +1,179 @@
+---
+# ==============================================================================
+# 0. PRÉ-REQUISITOS
+# ==============================================================================
+
+- name: "Conferir dados pessoais obrigatórios"
+  assert:
+    that:
+      - nome_completo is defined and nome_completo | length > 0
+      - email is defined and email | length > 0
+    fail_msg: >-
+      Faltam nome_completo/email. Rode ./bootstrap.sh (ele pergunta os dados)
+      ou passe -e @~/.config/dotfiles/vars.json.
+    quiet: true
+  tags: always
+
+# ==============================================================================
+# 1. CORE DO SISTEMA (DEPENDÊNCIAS GERAIS)
+# ==============================================================================
+# O Nala gerencia pacotes e o Git cria os arquivos de config (.gitconfig)
+# que serão montados dentro dos containers depois.
+
+- import_tasks: nala.yml
+  tags: [always, nala]
+
+- import_tasks: git.yml
+  tags: [always, git]
+
+- import_tasks: fonts.yml
+  tags: [always, fonts]
+
+# ==============================================================================
+# 2. INTERFACE VISUAL (ASSETS)
+# ==============================================================================
+# Primeiro baixamos os ativos. O Cinnamon (configuração) depende de que
+# estes arquivos já existam nas pastas ~/.themes e ~/.icons.
+
+- import_tasks: icons.yml
+  tags: [ui, icons]
+
+- import_tasks: theme.yml
+  tags: [ui, theme]
+
+# O handler "Instalar Colloid Theme" só dispara no fim do play por padrão.
+# plank.yml (seção 6) precisa que ~/.themes/<tema>/plank já exista para
+# copiar o skin do Plank, então forçamos a instalação do tema AGORA.
+- meta: flush_handlers
+
+- import_tasks: cursors.yml
+  tags: [ui, cursors]
+
+# ==============================================================================
+# 3. CONFIGURAÇÃO DO DESKTOP (CINNAMON)
+# ==============================================================================
+# Aplica o Wallpaper e carrega o Dconf.
+# DEPENDS_ON: theme, icons, cursors
+
+- import_tasks: cinnamon.yml
+  tags: [ui, cinnamon]
+
+# ==============================================================================
+# 4. ENGINE E TERMINAL (INFRAESTRUTURA)
+# ==============================================================================
+# O Podman deve vir antes do DevContainer para garantir que o socket
+# /run/user/1000/podman/podman.sock exista.
+
+- import_tasks: terminal.yml
+  tags: terminal
+
+# Existia no repo mas nunca era chamado pelo main.yml — o perfil Nord do
+# GNOME Terminal nunca era instalado de fato. Agora entra no fluxo normal.
+- import_tasks: terminal_theme.yml
+  tags: [terminal, terminal_theme]
+
+- import_tasks: zsh.yml
+  when: instalar_zsh | bool
+  tags: [terminal, zsh]
+
+- import_tasks: tmux.yml
+  when: instalar_tmux | bool
+  tags: [terminal, tmux]
+
+- import_tasks: podman.yml
+  when: instalar_podman | bool
+  tags: podman
+
+- import_tasks: fastfetch.yml
+  when: instalar_fastfetch | bool
+  tags: fastfetch
+
+# ==============================================================================
+# 5. DEVCONTAINER (O AMBIENTE FINAL)
+# ==============================================================================
+# DEPENDS_ON: git (para .gitconfig), podman (para socket), terminal (para temas)
+
+- import_tasks: vscode.yml
+  when: instalar_vscode | bool
+  tags: vscode
+
+- import_tasks: devcontainer.yml
+  when: instalar_devcontainer | bool
+  tags: devcontainer
+
+# ==============================================================================
+# 6. APLICATIVOS DE USUÁRIO
+# ==============================================================================
+# Cada componente opcional tem um "when: instalar_*" — os valores ficam no
+# setup.yml (padrões em defaults/main.yml).
+# Apps gerais vêm antes para garantir que utilitários básicos (e o Plank)
+# estejam prontos antes de navegadores específicos.
+
+- import_tasks: apps.yml
+  tags: apps
+
+- import_tasks: aseprite.yml
+  when: instalar_aseprite | bool
+  tags: aseprite
+
+- import_tasks: flameshot.yml
+  when: instalar_flameshot | bool
+  tags: flameshot
+
+- import_tasks: firefox.yml
+  when: instalar_firefox_tema | bool
+  tags: firefox
+
+- import_tasks: heroic.yml
+  when: instalar_heroic | bool
+  tags: heroic
+
+- import_tasks: steam.yml
+  when: instalar_steam | bool
+  tags: steam
+
+- import_tasks: audio.yml
+  when: configurar_audio_pro | bool
+  tags: audio
+
+- import_tasks: plugins_audio.yml
+  when: instalar_plugins_audio | bool
+  tags: plugins
+
+- import_tasks: latencia.yml
+  tags: latencia
+
+- import_tasks: bitwig.yml
+  when: instalar_bitwig | bool
+  tags: bitwig
+
+- import_tasks: tonelib_zoom.yml
+  when: instalar_tonelib_zoom | bool
+  tags: tonelib_zoom
+
+- import_tasks: godot.yml
+  when: instalar_godot | bool
+  tags: godot
+
+- import_tasks: flatpak.yml
+  when: instalar_fdm | bool or instalar_jdownloader | bool
+  tags: flatpak
+
+- import_tasks: timeshift.yml
+  when: instalar_timeshift | bool
+  tags: timeshift
+
+- import_tasks: brave.yml
+  when: instalar_brave | bool
+  tags: brave
+
+- import_tasks: git_profiles.yml
+  tags: git_profiles
+
+- import_tasks: wezterm.yml
+  when: instalar_wezterm | bool
+  tags: wezterm
+
+- import_tasks: plank.yml
+  when: instalar_plank | bool
+  tags: plank

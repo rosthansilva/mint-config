@@ -1,0 +1,80 @@
+---
+- name: Converge
+  hosts: all
+  become: false
+
+  # Dados fictícios: no uso real eles vêm do bootstrap.sh.
+  vars:
+    nome_completo: "Fulano de Tal"
+    email: "fulano@example.com"
+    git_profiles:
+      - name: "empresa"
+        email: "fulano@empresa.example.com"
+        workspace: "workspace/empresa"
+        ssh_key: "id_empresa_ed25519"
+      - name: "pessoal"
+        email: "fulano.pessoal@example.com"
+        workspace: "personal"
+        ssh_key: "id_pessoal_ed25519"
+      - name: "cliente"
+        email: "fulano@cliente.example.com"
+        workspace: "workspace/cliente"
+        ssh_key: "id_cliente_ed25519"
+
+  environment:
+    DBUS_SESSION_BUS_ADDRESS: "{{ dbus_session_bus_address | default('') }}"
+
+  pre_tasks:
+    # tags: always em todas: sem isso, rodar com --tags pula a sessão dbus
+    # e qualquer gsettings/dconf da role falha só no teste.
+    # Sem isso, todo gsettings/dconf (icons.yml, theme.yml, cursors.yml,
+    # cinnamon.yml e os handlers) falha porque não existe sessão de usuário
+    # de verdade dentro do container.
+    - name: Instalar dbus-x11 (fornece o binário dbus-launch)
+      become: true
+      apt:
+        name: dbus-x11
+        state: present
+        update_cache: yes
+      tags: always
+
+    # A imagem de container do Mint é uma base mínima e não traz o Cinnamon
+    # instalado (só o essencial pra buildar/testar). Numa instalação real do
+    # Mint isso sempre vem por padrão — sem isso os schemas gsettings de
+    # icons.yml/theme.yml/cursors.yml/cinnamon.yml simplesmente não existem.
+    - name: Instalar os schemas gsettings do Cinnamon (org.cinnamon.desktop.*)
+      become: true
+      apt:
+        name: cinnamon-desktop-data
+        state: present
+      tags: always
+
+    - name: Esperar o systemd/dbus do sistema terminarem de subir
+      wait_for:
+        path: /run/dbus/system_bus_socket
+        timeout: 30
+      tags: always
+
+    - name: Abrir uma sessão dbus dedicada a este run
+      command: dbus-launch --sh-syntax
+      register: dbus_launch
+      changed_when: false
+      tags: always
+
+    - name: Exportar o endereço da sessão dbus para o resto do play
+      set_fact:
+        dbus_session_bus_address: "{{ dbus_launch.stdout | regex_search(\"DBUS_SESSION_BUS_ADDRESS='([^']+)'\", '\\1') | first }}"
+      tags: always
+
+    # Necessário para os tasks de podman.yml que usam `systemd: ... scope: user`.
+    # É a parte mais frágil de testar dentro de um container (systemd --user
+    # aninhado); se falhar aqui, confirme manualmente numa máquina/VM real.
+    - name: Habilitar linger para o usuário atual (permite systemd --user)
+      become: true
+      command: "loginctl enable-linger {{ ansible_user_id }}"
+      failed_when: false
+      changed_when: false
+      tags: always
+
+  roles:
+    - role: dotfiles

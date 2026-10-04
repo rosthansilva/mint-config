@@ -1,0 +1,76 @@
+---
+# Recuperado do antigo tasks/app_chk.sh (o apps.yml anterior era só uma
+# cópia do brave.yml, então esta lista nunca era instalada). As seções de
+# Plank e Tmux daquele arquivo ficaram de fora: plank.yml e tmux.yml já
+# cuidam disso e elas sobrescreveriam o tema Nord.
+
+# ==============================================================================
+# 1. REPOSITÓRIOS
+# ==============================================================================
+# deb822_repository em vez de add-apt-repository: o add-apt-repository do
+# Mint (pacote mintsources) não aceita --no-update e recusa sistemas cujo
+# codinome não seja do Mint — o código antigo falhava em silêncio
+# (failed_when: false) e os PPAs nunca eram adicionados.
+# PPAs são publicados com o codinome do Ubuntu base (noble), não do Mint
+# (zena), por isso lemos UBUNTU_CODENAME do /etc/os-release.
+
+- name: "Descobrir codinome do Ubuntu base"
+  shell: ". /etc/os-release && echo \"${UBUNTU_CODENAME:-$VERSION_CODENAME}\""
+  register: ubuntu_codename
+  changed_when: false
+  tags: apps
+
+# Fingerprints das chaves de assinatura de cada PPA, conferidos na API do
+# Launchpad (api.launchpad.net/1.0/~<dono>/+archive/ubuntu/<ppa>).
+- name: "Adicionar PPAs (Neovim/OBS)"
+  become: true
+  deb822_repository:
+    name: "{{ item.name }}"
+    types: deb
+    uris: "https://ppa.launchpadcontent.net/{{ item.ppa }}/ubuntu"
+    suites: "{{ ubuntu_codename.stdout }}"
+    components: main
+    signed_by: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x{{ item.fingerprint }}"
+  loop:
+    - { name: "neovim-ppa-unstable", ppa: "neovim-ppa/unstable", fingerprint: "9DBB0BE9366964F134855E2255F96FCF8231B6DD", ativo: true }
+    - { name: "obs-studio", ppa: "obsproject/obs-studio", fingerprint: "BC7345F522079769F5BBE987EFC71127F425E228", ativo: "{{ instalar_obs }}" }
+  when: item.ativo | bool
+  register: apps_ppas
+  tags: apps
+
+# ==============================================================================
+# 2. INSTALAÇÃO DOS APPS
+# ==============================================================================
+
+# Ferramentas base (dotfiles_apps) + apps de criação/mídia ligados no setup.yml.
+- name: "Instalar Dev Tools, Modern Unix e apps de criação escolhidos"
+  become: true
+  vars:
+    apps_opcionais:
+      - { pacote: krita, ativo: "{{ instalar_krita }}" }
+      - { pacote: kdenlive, ativo: "{{ instalar_kdenlive }}" }
+      - { pacote: obs-studio, ativo: "{{ instalar_obs }}" }
+      - { pacote: gimp, ativo: "{{ instalar_gimp }}" }
+      - { pacote: inkscape, ativo: "{{ instalar_inkscape }}" }
+      - { pacote: vlc, ativo: "{{ instalar_vlc }}" }
+  apt:
+    name: "{{ dotfiles_apps + (apps_opcionais | selectattr('ativo', 'truthy') | map(attribute='pacote') | list) }}"
+    state: present
+    update_cache: "{{ apps_ppas is changed }}"
+  tags: apps
+
+# ==============================================================================
+# 3. PÓS-INSTALAÇÃO (SYMLINKS)
+# ==============================================================================
+# No Ubuntu/Mint os binários vêm como batcat/fdfind por conflito de nome.
+
+- name: "Criar symlinks para ferramentas (bat/fd)"
+  become: true
+  file:
+    src: "/usr/bin/{{ item.src }}"
+    dest: "/usr/local/bin/{{ item.dest }}"
+    state: link
+  loop:
+    - { src: 'batcat', dest: 'bat' }
+    - { src: 'fdfind', dest: 'fd' }
+  tags: apps

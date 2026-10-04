@@ -1,0 +1,138 @@
+---
+- name: Instalar o Plank
+  become: true
+  ansible.builtin.apt:
+    name: plank
+    state: present
+    update_cache: yes
+
+# Recria a pasta só com os atalhos dos apps ligados no setup.yml, para o
+# dock não ficar com ícone de app que não foi instalado.
+- name: Limpar launchers antigos do Plank
+  ansible.builtin.file:
+    path: "~/.config/plank/dock1/launchers"
+    state: absent
+  changed_when: false
+
+- name: Garantir que o diretório de launchers existe
+  ansible.builtin.file:
+    path: "~/.config/plank/dock1/launchers"
+    state: directory
+    mode: '0755'
+  changed_when: false
+
+- name: Copiar launchers dos apps instalados para o Plank
+  ansible.builtin.copy:
+    src: "launchers/{{ item.arquivo }}.dockitem"
+    dest: "~/.config/plank/dock1/launchers/{{ item.arquivo }}.dockitem"
+    mode: '0644'
+  loop:
+    - { arquivo: nemo, ativo: true }
+    - { arquivo: firefox, ativo: true }
+    - { arquivo: org.gnome.Terminal, ativo: true }
+    - { arquivo: thunderbird, ativo: true }
+    - { arquivo: code, ativo: "{{ instalar_vscode }}" }
+    - { arquivo: godot, ativo: "{{ instalar_godot }}" }
+    - { arquivo: com.bitwig.BitwigStudio, ativo: "{{ instalar_bitwig }}" }
+    - { arquivo: org.kde.krita, ativo: "{{ instalar_krita }}" }
+    - { arquivo: org.inkscape.Inkscape, ativo: "{{ instalar_inkscape }}" }
+    - { arquivo: org.kde.kdenlive, ativo: "{{ instalar_kdenlive }}" }
+    - { arquivo: com.obsproject.Studio, ativo: "{{ instalar_obs }}" }
+  loop_control:
+    label: "{{ item.arquivo }}"
+  when: item.ativo | bool
+
+# Aseprite é compilado na pasta do usuário: o atalho também fica lá.
+- name: Criar launcher do Aseprite no Plank
+  ansible.builtin.copy:
+    dest: "~/.config/plank/dock1/launchers/aseprite.dockitem"
+    content: |
+      [PlankDockItemPreferences]
+      Launcher=file://{{ ansible_env.HOME }}/.local/share/applications/aseprite.desktop
+    mode: '0644'
+  when: instalar_aseprite | bool
+
+# O atalho do ToneLib-Zoom é criado pelo Distrobox dentro da home do
+# usuário, então o caminho não pode ficar fixo em files/launchers/.
+- name: Criar launcher do ToneLib-Zoom no Plank
+  ansible.builtin.copy:
+    dest: "~/.config/plank/dock1/launchers/tonelib-ToneLib-Zoom.dockitem"
+    content: |
+      [PlankDockItemPreferences]
+      Launcher=file://{{ ansible_env.HOME }}/.local/share/applications/tonelib-ToneLib-Zoom.desktop
+    mode: '0644'
+  when: instalar_tonelib_zoom | bool
+
+- name: Garantir que o diretório autostart existe
+  ansible.builtin.file:
+    path: "~/.config/autostart"
+    state: directory
+    mode: '0755'
+
+- name: Adicionar Plank à inicialização do sistema (Autostart)
+  ansible.builtin.copy:
+    dest: "~/.config/autostart/plank.desktop"
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Exec=plank
+      Hidden=false
+      NoDisplay=false
+      X-GNOME-Autostart-enabled=true
+      Name[en_US]=Plank
+      Name=Plank
+      Comment[en_US]=Lovely dock.
+      Comment=Lovely dock.
+    mode: '0644'
+
+# ==============================================================================
+# TEMA NORD DO PLANK
+# ==============================================================================
+# Não existe um tema "Nord" publicado separadamente para o Plank, mas o
+# instalador do Colloid-gtk-theme (já baixado da internet em theme.yml, com
+# --tweaks nord) traz um skin de Plank combinando com o tema Nord/teal.
+# Ele instala em ~/.themes/<tema>/plank quando roda como usuário comum
+# (máquina real), ou em /usr/share/themes/<tema>/plank quando roda como
+# root (caso do container de teste do Molecule) — por isso buscamos nos
+# dois lugares. Só precisamos copiá-lo para onde o Plank procura temas
+# (~/.local/share/plank/themes) e ativá-lo.
+
+- name: "Localizar o skin de Plank instalado junto ao tema Colloid"
+  ansible.builtin.find:
+    paths:
+      - "{{ ansible_env.HOME }}/.themes"
+      - "/usr/share/themes"
+    patterns: "plank"
+    file_type: directory
+    recurse: true
+    depth: 2
+  register: colloid_plank_theme
+  tags: plank
+
+- name: "Abortar se o tema Colloid ainda não foi instalado"
+  ansible.builtin.assert:
+    that: colloid_plank_theme.matched > 0
+    fail_msg: >-
+      Nenhuma pasta 'plank' encontrada em ~/.themes/*. Rode o playbook com a
+      tag 'theme' primeiro (ela instala o Colloid, que traz o skin do Plank).
+  tags: plank
+
+- name: "Garantir diretório de temas do Plank"
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/share/plank/themes/Nord-Colloid"
+    state: directory
+    mode: '0755'
+  tags: plank
+
+- name: "Copiar o skin Nord/Colloid para o diretório de temas do Plank"
+  ansible.builtin.copy:
+    src: "{{ colloid_plank_theme.files[0].path }}/"
+    dest: "{{ ansible_env.HOME }}/.local/share/plank/themes/Nord-Colloid/"
+    remote_src: yes
+    mode: '0644'
+  tags: plank
+
+- name: "Ativar o tema Nord-Colloid como skin do Plank"
+  ansible.builtin.shell: "dconf write /net/launchpad/plank/docks/dock1/theme \"'Nord-Colloid'\""
+  changed_when: false
+  tags: plank

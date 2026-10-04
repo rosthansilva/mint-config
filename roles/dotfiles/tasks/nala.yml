@@ -1,0 +1,51 @@
+---
+- name: "Instalar Nala"
+  become: true
+  apt:
+    name:
+      - nala
+      - git
+      - software-properties-common
+    state: present
+    update_cache: no
+  tags: nala
+
+# Mirror da UMinho (cesium) que já esteve quebrado: remove se existir.
+- name: "Localizar fontes de pacotes corrompidas do Minho"
+  find:
+    paths:
+      - /etc/apt/sources.list.d
+      - /var/lib/apt/lists
+    patterns: "*cesium*"
+  register: nala_cesium
+  tags: nala
+
+- name: "Remover fontes de pacotes corrompidas do Minho"
+  become: true
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ nala_cesium.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  tags: nala
+
+# Opcional (nala_buscar_mirrors): o nala fetch testa mirrors do Ubuntu e
+# grava a escolha em nala-sources.list. Útil quando um mirror está quebrado;
+# no uso normal o Mint já gerencia os mirrors (Fontes de Software).
+- name: "Buscar mirrors saudáveis e gerar nova lista"
+  become: true
+  shell: "yes | nala fetch --auto --country US,BR,PT"
+  args:
+    creates: /etc/apt/sources.list.d/nala-sources.list
+  register: nala_fetch_res
+  failed_when: false
+  when: nala_buscar_mirrors | bool
+  tags: nala
+
+- name: "Atualizar cache do APT (se tiver mais de 1h)"
+  become: true
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  tags: nala

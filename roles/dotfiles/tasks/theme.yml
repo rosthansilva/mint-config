@@ -1,0 +1,76 @@
+---
+- name: Instalar Colloid Theme
+  become: false
+  block:
+    - name: Instalar dependências de compilação do tema
+      become: true  # Necessário para instalar pacotes no sistema
+      ansible.builtin.package:
+        name: sassc
+        state: present
+
+    - name: Clonar repositório do Colloid
+      git:
+        repo: https://github.com/vinceliuice/Colloid-gtk-theme.git
+        dest: "{{ ansible_env.HOME }}/.local/src/Colloid-gtk-theme"
+        update: yes
+
+    - name: Executar script de instalação
+      command: >
+        ./install.sh
+        --tweaks nord
+        --color dark
+        --size standard
+        --theme teal
+
+      args:
+        chdir: "{{ ansible_env.HOME }}/.local/src/Colloid-gtk-theme"
+
+- name: Verificar tema GTK atual
+  command: gsettings get org.gnome.desktop.interface gtk-theme
+  register: current_gtk_theme
+  changed_when: false
+  failed_when: false
+  tags: theme
+
+- name: Verificar se tema Colloid está instalado
+  stat:
+    path: "{{ ansible_env.HOME }}/.themes/Colloid-Dark-Nord"
+  register: colloid_folder
+  tags: theme
+
+- name: Instalar tema Colloid se necessário
+  debug:
+    msg: "Instalando tema Colloid Nord Dark..."
+  when: >
+    'Colloid' not in current_gtk_theme.stdout or
+    not colloid_folder.stat.exists
+  notify: Instalar Colloid Theme
+  changed_when: true
+  tags: theme
+
+- name: Aplicar tema GTK
+  command: gsettings set org.gnome.desktop.interface gtk-theme Colloid-Dark-Nord
+  when: colloid_folder.stat.exists
+  tags: theme
+
+- name: Instalar Cursors Breeze
+  become: true
+  ansible.builtin.package:
+    name: breeze-cursor-theme # Nome do pacote no Ubuntu/Debian/Fedora
+    state: present
+
+- name: Verificar se os cursores estão disponíveis
+  ansible.builtin.stat:
+    path: "/usr/share/icons/Breeze_Snow"
+  register: breeze_exists
+
+- name: Aplicar Cursor Breeze (Snow)
+  ansible.builtin.command: 
+    cmd: gsettings set org.gnome.desktop.interface cursor-theme "Breeze_Snow"
+  when: breeze_exists.stat.exists
+  changed_when: false
+
+- name: Definir tamanho do cursor (opcional)
+  ansible.builtin.command: 
+    cmd: gsettings set org.gnome.desktop.interface cursor-size 24
+  changed_when: false

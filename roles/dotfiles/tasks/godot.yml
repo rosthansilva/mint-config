@@ -1,0 +1,300 @@
+---
+# Godot oficial do GitHub Releases (o pacote do apt do Ubuntu é o Godot 3,
+# muito antigo; o Flatpak roda em sandbox e atrapalha editor externo e
+# export templates). O binário é único e portátil: fica em /opt/godot/<versão>/
+# e /usr/local/bin/godot aponta pra versão atual — rodar de novo depois de
+# um release novo atualiza o link sozinho.
+
+- name: "Instalar unzip (necessário pra extrair o Godot)"
+  become: true
+  apt:
+    name: unzip
+    state: present
+  tags: godot
+
+# Cache: com o Godot instalado e verificado há menos de
+# atualizacoes_intervalo_horas, não consulta o GitHub (limite de 60/hora).
+- name: "Ver Godot instalado e última verificação de atualização"
+  stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/local/bin/godot
+    - "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/godot"
+  register: godot_stats
+  tags: godot
+
+- name: "Decidir se precisa verificar atualização do Godot"
+  set_fact:
+    godot_verificar: >-
+      {{ dotfiles_forcar_atualizacao | bool
+         or not godot_stats.results[0].stat.exists
+         or not godot_stats.results[1].stat.exists
+         or (ansible_date_time.epoch | int - godot_stats.results[1].stat.mtime | int)
+            > (atualizacoes_intervalo_horas | int * 3600) }}
+  tags: godot
+
+- name: "Consultar o último release estável do Godot no GitHub"
+  uri:
+    url: "https://api.github.com/repos/godotengine/godot/releases/latest"
+    headers: "{{ {'Authorization': 'Bearer ' ~ lookup('env', 'GITHUB_TOKEN')} if lookup('env', 'GITHUB_TOKEN') else {} }}"
+    return_content: yes
+    status_code: [200, 403, 429]
+  register: godot_release
+  when: godot_verificar | bool
+  tags: godot
+
+- name: "Limite da API do GitHub atingido (Godot ainda não instalado)"
+  fail:
+    msg: >-
+      A API do GitHub recusou a consulta (limite de 60/hora sem login).
+      Aguarde até uma hora ou rode com GITHUB_TOKEN definido.
+  when:
+    - godot_verificar | bool
+    - godot_release.status != 200
+    - not godot_stats.results[0].stat.exists
+  tags: godot
+
+- name: "Definir se o Godot será instalado/atualizado agora"
+  set_fact:
+    godot_atualizar: "{{ godot_verificar | bool and godot_release.status | default(0) == 200 }}"
+  tags: godot
+
+# Sem consulta ao GitHub: a versão instalada vem do próprio link
+# /usr/local/bin/godot -> /opt/godot/<versão>/...
+- name: "Descobrir a versão do Godot já instalada"
+  shell: readlink -f /usr/local/bin/godot | cut -d/ -f4
+  register: godot_instalada
+  changed_when: false
+  when: not godot_atualizar | bool
+  tags: godot
+
+- name: "Usar a versão já instalada do Godot"
+  set_fact:
+    godot_version: "{{ godot_instalada.stdout }}"
+  when: not godot_atualizar | bool
+  tags: godot
+
+# Tudo abaixo depende dos dados do release (links e checksums).
+- name: "Instalar/atualizar Godot e export templates"
+  when: godot_atualizar | bool
+  tags: godot
+  block:
+    # Filtra a versão padrão x86_64 (os zips "_mono_" são a versão .NET/C#).
+    - name: "Selecionar o zip Linux x86_64 do release"
+      set_fact:
+        godot_version: "{{ godot_release.json.tag_name }}"
+        godot_zip: "{{ godot_release.json.assets | selectattr('name', 'match', '^Godot_v.*_linux\\.x86_64\\.zip$') | first }}"
+        godot_templates: "{{ godot_release.json.assets | selectattr('name', 'match', '^Godot_v.*-stable_export_templates\\.tpz$') | first }}"
+        # Lista oficial de SHA-512 do release: todo download é conferido contra ela.
+        godot_sha512_url: "{{ (godot_release.json.assets | selectattr('name', 'equalto', 'SHA512-SUMS.txt') | first).browser_download_url }}"
+      tags: godot
+
+    # Separado do set_fact acima: variáveis definidas num set_fact só ficam
+    # visíveis nas tasks seguintes.
+    - name: "Definir caminho do binário do Godot"
+      set_fact:
+        godot_binario: "/opt/godot/{{ godot_version }}/{{ godot_zip.name | regex_replace('\\.zip$', '') }}"
+      tags: godot
+
+    - name: "Garantir diretório da versão do Godot"
+      become: true
+      file:
+        path: "/opt/godot/{{ godot_version }}"
+        state: directory
+        mode: '0755'
+      tags: godot
+
+    - name: "Verificar se o Godot {{ godot_version }} já está instalado"
+      stat:
+        path: "{{ godot_binario }}"
+      register: godot_instalado
+      tags: godot
+
+    - name: "Baixar o Godot {{ godot_version }} (com verificação SHA-512)"
+      get_url:
+        url: "{{ godot_zip.browser_download_url }}"
+        dest: "/tmp/{{ godot_zip.name }}"
+        checksum: "sha512:{{ godot_sha512_url }}"
+        mode: '0644'
+      when: not godot_instalado.stat.exists
+      tags: godot
+
+    - name: "Extrair o Godot {{ godot_version }}"
+      become: true
+      unarchive:
+        src: "/tmp/{{ godot_zip.name }}"
+        dest: "/opt/godot/{{ godot_version }}"
+        remote_src: yes
+      when: not godot_instalado.stat.exists
+      tags: godot
+
+    - name: "Remover o zip baixado do Godot"
+      file:
+        path: "/tmp/{{ godot_zip.name }}"
+        state: absent
+      tags: godot
+
+    - name: "Apontar /usr/local/bin/godot para a versão atual"
+      become: true
+      file:
+        src: "{{ godot_binario }}"
+        dest: /usr/local/bin/godot
+        state: link
+        force: yes
+      tags: godot
+
+    - name: "Baixar ícone oficial do Godot"
+      become: true
+      get_url:
+        url: "https://raw.githubusercontent.com/godotengine/godot/{{ godot_version }}/misc/logo/icon.svg"
+        dest: /opt/godot/icon.svg
+        mode: '0644'
+      tags: godot
+
+    # Fica em /usr/share/applications (e não em ~/.local) para seguir o mesmo
+    # caminho dos outros launchers do Plank em files/launchers/.
+    - name: "Criar atalho do Godot no menu (.desktop)"
+      become: true
+      copy:
+        dest: /usr/share/applications/godot.desktop
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=Godot Engine
+          GenericName=Game Engine
+          Comment=Multi-platform 2D and 3D game engine
+          Exec=/usr/local/bin/godot %f
+          Icon=/opt/godot/icon.svg
+          Terminal=false
+          Categories=Development;IDE;
+          MimeType=application/x-godot-project;
+          StartupWMClass=Godot
+        mode: '0644'
+      tags: godot
+
+    # ==============================================================================
+    # EXPORT TEMPLATES (necessários para exportar o jogo; ~1,3 GB)
+    # ==============================================================================
+    # O Godot procura em ~/.local/share/godot/export_templates/<versão>, com a
+    # versão no formato "4.7.2.stable" (ponto no lugar do hífen).
+
+    - name: "Verificar se os export templates do Godot {{ godot_version }} já existem"
+      stat:
+        path: "{{ ansible_env.HOME }}/.local/share/godot/export_templates/{{ godot_version | replace('-', '.') }}"
+      register: godot_templates_dir
+      when: godot_export_templates | bool
+      tags: godot
+
+    - name: "Baixar export templates do Godot {{ godot_version }} (com verificação SHA-512)"
+      get_url:
+        url: "{{ godot_templates.browser_download_url }}"
+        dest: "/tmp/{{ godot_templates.name }}"
+        checksum: "sha512:{{ godot_sha512_url }}"
+        mode: '0644'
+      when:
+        - godot_export_templates | bool
+        - not godot_templates_dir.stat.exists
+      tags: godot
+
+    - name: "Garantir pasta de export templates do Godot"
+      file:
+        path: "{{ ansible_env.HOME }}/.local/share/godot/export_templates"
+        state: directory
+        mode: '0755'
+      when: godot_export_templates | bool
+      tags: godot
+
+    # O .tpz é um zip com uma pasta "templates/" dentro; ela é extraída e
+    # renomeada para o nome da versão.
+    - name: "Extrair export templates do Godot"
+      unarchive:
+        src: "/tmp/{{ godot_templates.name }}"
+        dest: "{{ ansible_env.HOME }}/.local/share/godot/export_templates"
+        remote_src: yes
+      when:
+        - godot_export_templates | bool
+        - not godot_templates_dir.stat.exists
+      tags: godot
+
+    - name: "Renomear pasta de templates para a versão do Godot"
+      command: >-
+        mv "{{ ansible_env.HOME }}/.local/share/godot/export_templates/templates"
+           "{{ ansible_env.HOME }}/.local/share/godot/export_templates/{{ godot_version | replace('-', '.') }}"
+      when:
+        - godot_export_templates | bool
+        - not godot_templates_dir.stat.exists
+      tags: godot
+
+    - name: "Remover o .tpz baixado"
+      file:
+        path: "/tmp/{{ godot_templates.name }}"
+        state: absent
+      tags: godot
+
+    - name: "Garantir pasta do cache de verificações"
+      file:
+        path: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado"
+        state: directory
+        mode: '0755'
+
+    - name: "Registrar verificação de atualização do Godot"
+      copy:
+        dest: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/godot"
+        content: "{{ ansible_date_time.iso8601 }}"
+        mode: '0644'
+      changed_when: false
+
+# ==============================================================================
+# INTEGRAÇÃO COM O VS CODE (só se o VS Code também for instalado)
+# ==============================================================================
+
+- name: "Listar extensões instaladas no VS Code"
+  command: code --list-extensions
+  register: godot_code_ext
+  changed_when: false
+  when: instalar_vscode | bool
+  tags: godot
+
+- name: "Instalar extensão godot-tools no VS Code"
+  command: code --install-extension geequlim.godot-tools
+  when:
+    - instalar_vscode | bool
+    - "'geequlim.godot-tools' not in (godot_code_ext.stdout | lower)"
+  tags: godot
+
+# As configurações do editor ficam num arquivo por versão "maior.menor"
+# (ex.: editor_settings-4.7.tres). Se ainda não existir (Godot nunca
+# aberto), criamos só o cabeçalho; o Godot completa o resto ao abrir.
+- name: "Garantir pasta de configuração do Godot"
+  file:
+    path: "{{ ansible_env.HOME }}/.config/godot"
+    state: directory
+    mode: '0755'
+  when: instalar_vscode | bool
+  tags: godot
+
+- name: "Criar arquivo de configurações do editor Godot (se não existir)"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.config/godot/editor_settings-{{ godot_version | regex_replace('^(\\d+\\.\\d+).*$', '\\1') }}.tres"
+    content: |
+      [gd_resource type="EditorSettings" format=3]
+
+      [resource]
+    force: no
+    mode: '0644'
+  when: instalar_vscode | bool
+  tags: godot
+
+- name: "Configurar o VS Code como editor de scripts do Godot"
+  community.general.ini_file:
+    path: "{{ ansible_env.HOME }}/.config/godot/editor_settings-{{ godot_version | regex_replace('^(\\d+\\.\\d+).*$', '\\1') }}.tres"
+    section: resource
+    option: "{{ item.chave }}"
+    value: "{{ item.valor }}"
+    mode: '0644'
+  loop:
+    - { chave: "text_editor/external/use_external_editor", valor: "true" }
+    - { chave: "text_editor/external/exec_path", valor: '"/usr/bin/code"' }
+    - { chave: "text_editor/external/exec_flags", valor: '"{project} --goto {file}:{line}:{col}"' }
+  when: instalar_vscode | bool
+  tags: godot

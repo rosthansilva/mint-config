@@ -1,0 +1,53 @@
+---
+# Bitwig Studio pelo .deb oficial (bitwig.com redireciona para um link
+# assinado em downloads-secure.bitwig.com). Para trocar de versão, altere
+# bitwig_version no setup.yml. A licença é ativada dentro do próprio app.
+
+# O pacote depende de bibliotecas i386 (plugins 32-bit), mesmo em 64-bit.
+- name: "Verificar arquiteturas habilitadas no dpkg (Bitwig)"
+  command: dpkg --print-foreign-architectures
+  register: bitwig_archs
+  changed_when: false
+  tags: bitwig
+
+- name: "Habilitar arquitetura i386 (exigida pelo Bitwig)"
+  become: true
+  command: dpkg --add-architecture i386
+  when: "'i386' not in bitwig_archs.stdout_lines"
+  register: bitwig_i386
+  tags: bitwig
+
+- name: "Atualizar cache do APT após habilitar i386"
+  become: true
+  apt:
+    update_cache: yes
+  when: bitwig_i386 is changed
+  tags: bitwig
+
+- name: "Verificar versão instalada do Bitwig Studio"
+  command: dpkg-query -W -f=${Version} bitwig-studio
+  register: bitwig_instalado
+  failed_when: false
+  changed_when: false
+  tags: bitwig
+
+- name: "Baixar Bitwig Studio {{ bitwig_version }} (.deb oficial)"
+  get_url:
+    url: "https://www.bitwig.com/dl/Bitwig%20Studio/{{ bitwig_version }}/installer_linux/"
+    dest: "/tmp/bitwig-studio-{{ bitwig_version }}.deb"
+    mode: '0644'
+  when: bitwig_instalado.stdout != bitwig_version
+  tags: bitwig
+
+- name: "Instalar Bitwig Studio {{ bitwig_version }}"
+  become: true
+  apt:
+    deb: "/tmp/bitwig-studio-{{ bitwig_version }}.deb"
+  when: bitwig_instalado.stdout != bitwig_version
+  tags: bitwig
+
+- name: "Remover o .deb baixado do Bitwig"
+  file:
+    path: "/tmp/bitwig-studio-{{ bitwig_version }}.deb"
+    state: absent
+  tags: bitwig

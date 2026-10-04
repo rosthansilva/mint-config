@@ -1,0 +1,142 @@
+---
+# Baixa e instala UM plugin de áudio. Chamado por plugin_github.yml e
+# plugin_url.yml, que descobrem de onde baixar e definem:
+#   plugin_download_url  link do arquivo
+#   plugin_arquivo       nome do arquivo (também usado como "versão")
+#   plugin_checksum      opcional ("sha256:..."), quando a fonte publica
+# e recebem do loop a variável "plugin" com:
+#   nome    pasta de destino e nome do registro de versão
+#   tipo    deb    → instalado pelo apt (/usr/lib/vst3, /usr/lib/clap)
+#           arquivo → zip/tar/7z; VST3 vai para ~/.vst3/<nome>/ e CLAP para
+#                    ~/.clap/<nome>/ (pastas que o Bitwig já procura)
+#           uhe    → instalador oficial da u-he (install.sh --quiet)
+#           deb-extrair → .deb com dependências erradas (ex.: pede pacotes
+#                    -dev que não existem no Mint 22): o plugin é extraído
+#                    do .deb e copiado como "arquivo", sem passar pelo apt
+#   subdir  opcional: pasta dentro do arquivo onde procurar os plugins
+#           (para pacotes que trazem builds de Windows/Mac juntos)
+# Só baixa quando o arquivo publicado muda (registro em
+# ~/.local/share/dotfiles/plugins/<nome>).
+
+- name: "[{{ plugin.nome }}] Ler versão instalada"
+  command: cat "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/{{ plugin.nome }}"
+  register: plugin_versao
+  changed_when: false
+  failed_when: false
+
+- name: "[{{ plugin.nome }}] Instalar/atualizar para {{ plugin_arquivo }}"
+  when: plugin_versao.stdout != plugin_arquivo
+  block:
+    - name: "[{{ plugin.nome }}] Baixar {{ plugin_arquivo }}"
+      get_url:
+        url: "{{ plugin_download_url }}"
+        dest: "/tmp/{{ plugin_arquivo }}"
+        checksum: "{{ plugin_checksum | default(omit, true) }}"
+        mode: '0644'
+
+    - name: "[{{ plugin.nome }}] Instalar pacote .deb"
+      become: true
+      apt:
+        deb: "/tmp/{{ plugin_arquivo }}"
+      when: plugin.tipo == 'deb'
+
+    - name: "[{{ plugin.nome }}] Preparar pasta temporária"
+      file:
+        path: "/tmp/plugin-{{ plugin.nome }}"
+        state: "{{ item }}"
+        mode: '0755'
+      loop: [absent, directory]
+      when: plugin.tipo in ['arquivo', 'uhe', 'deb-extrair']
+
+    - name: "[{{ plugin.nome }}] Extrair arquivo (zip/tar)"
+      unarchive:
+        src: "/tmp/{{ plugin_arquivo }}"
+        dest: "/tmp/plugin-{{ plugin.nome }}"
+        remote_src: yes
+      when:
+        - plugin.tipo in ['arquivo', 'uhe']
+        - not plugin_arquivo.endswith('.7z')
+
+    - name: "[{{ plugin.nome }}] Extrair conteúdo do .deb (sem instalar)"
+      command: dpkg-deb -x "/tmp/{{ plugin_arquivo }}" "/tmp/plugin-{{ plugin.nome }}"
+      when: plugin.tipo == 'deb-extrair'
+
+    - name: "[{{ plugin.nome }}] Extrair arquivo (7z)"
+      command: 7z x -y "-o/tmp/plugin-{{ plugin.nome }}" "/tmp/{{ plugin_arquivo }}"
+      when:
+        - plugin.tipo == 'arquivo'
+        - plugin_arquivo.endswith('.7z')
+
+    # VST3: copia cada bundle *.vst3 (só o mais externo, sem descer dentro dele).
+    # CLAP: copia a pasta onde estão os .clap inteira, porque alguns plugins
+    # (ex.: LSP) precisam de bibliotecas .so ao lado do .clap.
+    - name: "[{{ plugin.nome }}] Copiar VST3/CLAP para ~/.vst3 e ~/.clap"
+      shell: |
+        set -eu
+        shopt -s nullglob
+        dirs=(/tmp/plugin-{{ plugin.nome }}/{{ plugin.subdir | default('') }})
+        origem="${dirs[0]}"
+        vst3="$HOME/.vst3/{{ plugin.nome }}"
+        clap="$HOME/.clap/{{ plugin.nome }}"
+        rm -rf "$vst3" "$clap"
+        find "$origem" -type d -name '*.vst3' -prune | while IFS= read -r b; do
+          mkdir -p "$vst3"; cp -r "$b" "$vst3/"
+        done
+        find "$origem" -type f -name '*.clap' -printf '%h\n' | sort -u | while IFS= read -r d; do
+          mkdir -p "$clap"; cp -r "$d"/. "$clap/"
+        done
+        # Alguns pacotes trazem .clap e .vst3 na mesma pasta: o VST3 já foi
+        # para ~/.vst3, então não fica duplicado em ~/.clap.
+        if [ -d "$clap" ]; then find "$clap" -name '*.vst3' -prune -exec rm -rf {} +; fi
+        test -d "$vst3" || test -d "$clap"   # falha se o arquivo não tinha plugin nenhum
+      args:
+        executable: /bin/bash
+      when: plugin.tipo in ['arquivo', 'deb-extrair']
+
+    # Instalador da u-he: plugin (VST2/VST3/CLAP) nas pastas do usuário e
+    # presets/dados em ~/.u-he.
+    - name: "[{{ plugin.nome }}] Rodar instalador da u-he"
+      shell: |
+        set -eu
+        cd /tmp/plugin-{{ plugin.nome }}/*/
+        ./install.sh --quiet --without-32 \
+          --vstdir="$HOME/.vst" --vst3dir="$HOME/.vst3" --clapdir="$HOME/.clap"
+      args:
+        executable: /bin/bash
+      when: plugin.tipo == 'uhe'
+
+    - name: "[{{ plugin.nome }}] Registrar versão instalada"
+      copy:
+        dest: "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/{{ plugin.nome }}"
+        content: "{{ plugin_arquivo }}"
+        mode: '0644'
+
+  # Um plugin com problema (link mudou, pacote quebrado...) não pode
+  # derrubar a instalação dos outros: registra e segue.
+  rescue:
+    - name: "[{{ plugin.nome }}] Falhou — seguindo com os demais"
+      debug:
+        msg: "ATENÇÃO: não foi possível instalar {{ plugin.nome }}. Veja o erro acima."
+
+    - name: "[{{ plugin.nome }}] Anotar falha para o resumo final"
+      set_fact:
+        plugins_com_falha: "{{ (plugins_com_falha | default([])) + [plugin.nome] }}"
+  always:
+    - name: "[{{ plugin.nome }}] Limpar arquivos temporários"
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/{{ plugin_arquivo }}"
+        - "/tmp/plugin-{{ plugin.nome }}"
+
+# Marca o momento da verificação (usado pelo cache de plugin_github.yml e
+# plugin_url.yml). Não conta como mudança no sistema.
+- name: "[{{ plugin.nome }}] Registrar verificação de atualização"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/{{ plugin.nome }}"
+    content: "{{ ansible_date_time.iso8601 }}"
+    mode: '0644'
+  changed_when: false
+  # Se falhou, não marca: a próxima execução tenta de novo, sem esperar o cache.
+  when: plugin.nome not in (plugins_com_falha | default([]))

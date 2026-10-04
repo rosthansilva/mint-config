@@ -1,0 +1,15 @@
+# Ambiente de teste do Molecule (python venv)
+.venv-test/
+
+# Arquivos antigos, fora de uso (contêm caminhos pessoais)
+_arquivo/
+
+# Estado local de ferramentas
+.claude/
+__pycache__/
+*.pyc
+
+# Respostas do bootstrap ficam em ~/.config/dotfiles (fora do repositório),
+# mas por garantia nunca versionar:
+vars.json
+*.retry

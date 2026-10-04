@@ -1,0 +1,41 @@
+---
+# Cenário de teste da role "dotfiles" em container, sem tocar no host (WSL).
+# Imagem oficial mantida pela própria equipe do Linux Mint, exatamente na
+# versão que você usa (22.3 "Zena"). Roda com systemd como PID 1 para que
+# dbus/dconf/systemd --user funcionem como numa máquina real.
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: mint-test
+    image: "docker.io/linuxmintd/mint22.3-amd64"
+    pre_build_image: true
+    privileged: true
+    command: /lib/systemd/systemd
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+
+provisioner:
+  name: ansible
+  playbooks:
+    converge: converge.yml
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+      callback_result_format: yaml
+      # Sem isso o ansible-playbook (chamado de dentro de molecule/default/)
+      # não acha a role "dotfiles" — ele não sobe diretórios sozinho.
+      roles_path: "${MOLECULE_PROJECT_DIRECTORY}/.."
+
+verifier:
+  name: ansible

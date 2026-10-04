@@ -1,0 +1,39 @@
+---
+# O nome do .deb do Heroic muda a cada versão (ex: Heroic-2.22.1-linux-amd64.deb),
+# diferente do fastfetch, então primeiro perguntamos à API do GitHub qual é o
+# arquivo do último release antes de baixar.
+- name: "Verificar se o Heroic Games Launcher já está instalado"
+  command: which heroic
+  register: heroic_check
+  ignore_errors: yes
+  changed_when: false
+  tags: heroic
+
+- name: "Consultar o último release do Heroic Games Launcher no GitHub"
+  uri:
+    url: "https://api.github.com/repos/Heroic-Games-Launcher/HeroicGamesLauncher/releases/latest"
+    return_content: yes
+  register: heroic_release
+  when: heroic_check.rc != 0
+  tags: heroic
+
+- name: "Selecionar o .deb do release"
+  set_fact:
+    heroic_deb_url: "{{ (heroic_release.json.assets | selectattr('name', 'match', '.*\\.deb$') | first).browser_download_url }}"
+  when: heroic_check.rc != 0
+  tags: heroic
+
+- name: "Baixar o .deb do Heroic Games Launcher"
+  get_url:
+    url: "{{ heroic_deb_url }}"
+    dest: "/tmp/heroic.deb"
+    mode: '0644'
+  when: heroic_check.rc != 0
+  tags: heroic
+
+- name: "Instalar Heroic Games Launcher"
+  become: true
+  apt:
+    deb: /tmp/heroic.deb
+  when: heroic_check.rc != 0
+  tags: heroic

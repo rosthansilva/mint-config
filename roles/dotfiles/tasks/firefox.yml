@@ -1,0 +1,77 @@
+---
+- name: "Garantir que o Firefox está instalado"
+  become: true
+  command: nala install -y firefox
+  register: firefox_install
+  changed_when: "'Installing' in firefox_install.stdout"
+  tags: firefox
+
+- name: "Verificar se já existe um perfil default-release"
+  shell: "ls -d {{ ansible_env.HOME }}/.mozilla/firefox/*.default-release 2>/dev/null | head -n 1"
+  register: firefox_profile_check
+  changed_when: false
+  failed_when: false
+  tags: firefox
+
+# `firefox -CreateProfile` exige DISPLAY (falha em boot sem sessão gráfica
+# e em containers/SSH). Por isso criamos o perfil na mão, do jeito que o
+# próprio Firefox faz: pasta "<hash>.default-release" + entrada em profiles.ini.
+- name: "Gerar identificador aleatório do perfil (mesma convenção do Firefox)"
+  shell: "tr -dc 'a-z0-9' < /dev/urandom | head -c 8"
+  register: firefox_profile_hash
+  changed_when: false
+  when: firefox_profile_check.stdout == ""
+  tags: firefox
+
+- name: "Criar diretório do perfil default-release"
+  file:
+    path: "{{ ansible_env.HOME }}/.mozilla/firefox/{{ firefox_profile_hash.stdout }}.default-release"
+    state: directory
+    mode: '0700'
+  when: firefox_profile_check.stdout == ""
+  tags: firefox
+
+- name: "Registrar o perfil em profiles.ini"
+  community.general.ini_file:
+    path: "{{ ansible_env.HOME }}/.mozilla/firefox/profiles.ini"
+    section: Profile0
+    option: "{{ item.key }}"
+    value: "{{ item.value }}"
+    mode: '0644'
+  loop:
+    - { key: "Name", value: "default-release" }
+    - { key: "IsRelative", value: "1" }
+    - { key: "Path", value: "{{ firefox_profile_hash.stdout }}.default-release" }
+    - { key: "Default", value: "1" }
+  when: firefox_profile_check.stdout == ""
+  tags: firefox
+
+- name: "Localizar pasta de perfil do Firefox"
+  # O comando busca a pasta de perfil ativa (geralmente .default-release)
+  shell: "basename $(ls -d {{ ansible_env.HOME }}/.mozilla/firefox/*.default-release | head -n 1)"
+  register: firefox_profile_name
+  changed_when: false
+  tags: firefox
+
+- name: "Verificar se o tema Nordic já está instalado"
+  stat:
+    path: "{{ ansible_env.HOME }}/.mozilla/firefox/{{ firefox_profile_name.stdout }}/chrome/firefox-nordic-theme"
+  register: firefox_theme_folder
+  tags: firefox
+
+- name: "Instalar Firefox Nordic Theme"
+  shell: |
+    rm -rf /tmp/firefox-nordic-theme
+    git clone --depth 1 https://github.com/EliverLara/firefox-nordic-theme.git /tmp/firefox-nordic-theme
+    cd /tmp/firefox-nordic-theme
+    ./scripts/install.sh -p {{ firefox_profile_name.stdout }}
+    rm -rf /tmp/firefox-nordic-theme
+  when: not firefox_theme_folder.stat.exists
+  tags: firefox
+
+- name: "Garantir que a configuração de stylesheets está ativa"
+  lineinfile:
+    path: "{{ ansible_env.HOME }}/.mozilla/firefox/{{ firefox_profile_name.stdout }}/prefs.js"
+    line: 'user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);'
+    create: yes
+  tags: firefox

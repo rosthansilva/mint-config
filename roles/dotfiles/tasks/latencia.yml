@@ -1,0 +1,90 @@
+---
+# Ajustes de sistema para áudio sem estalos (xruns). Valem após reiniciar.
+#   - preempt=full: o kernel interrompe tarefas longas para atender o áudio
+#     (é o que o antigo kernel "lowlatency" fazia; o kernel genérico do
+#     Ubuntu/Mint suporta via PREEMPT_DYNAMIC);
+#   - threadirqs: interrupções viram threads com prioridade ajustável;
+#   - usbcore.autosuspend=-1: a interface de áudio USB não "dorme".
+# O modo performance da CPU fica num toggle à parte (cpu_performance), porque
+# aumenta consumo de energia — em notebook pode ser melhor deixar desligado.
+
+- name: "Garantir diretório de configurações extras do GRUB"
+  become: true
+  file:
+    path: /etc/default/grub.d
+    state: directory
+    mode: '0755'
+  when: otimizar_latencia_audio | bool
+  tags: latencia
+
+- name: "Adicionar parâmetros de baixa latência ao kernel (GRUB)"
+  become: true
+  copy:
+    dest: /etc/default/grub.d/99-audio-baixa-latencia.cfg
+    content: |
+      # Gerenciado pelo Ansible (roles/dotfiles/tasks/latencia.yml)
+      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT preempt=full threadirqs usbcore.autosuspend=-1"
+    mode: '0644'
+  register: latencia_grub
+  when: otimizar_latencia_audio | bool
+  tags: latencia
+
+- name: "Remover parâmetros de baixa latência do kernel (toggle desligado)"
+  become: true
+  file:
+    path: /etc/default/grub.d/99-audio-baixa-latencia.cfg
+    state: absent
+  register: latencia_grub_off
+  when: not (otimizar_latencia_audio | bool)
+  tags: latencia
+
+- name: "Verificar se o GRUB está presente"
+  stat:
+    path: /boot/grub/grub.cfg
+  register: latencia_grub_cfg
+  tags: latencia
+
+- name: "Regenerar configuração do GRUB"
+  become: true
+  command: update-grub
+  when:
+    - latencia_grub is changed or latencia_grub_off is changed
+    - latencia_grub_cfg.stat.exists
+  tags: latencia
+
+- name: "Criar serviço que coloca a CPU em modo performance"
+  become: true
+  copy:
+    dest: /etc/systemd/system/cpu-performance.service
+    content: |
+      # Gerenciado pelo Ansible (roles/dotfiles/tasks/latencia.yml)
+      [Unit]
+      Description=CPU em modo performance (áudio de baixa latência)
+
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$g" 2>/dev/null || true; done'
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+  when: cpu_performance | bool
+  tags: latencia
+
+- name: "Habilitar modo performance da CPU no boot"
+  become: true
+  systemd:
+    name: cpu-performance.service
+    enabled: yes
+    daemon_reload: yes
+  when: cpu_performance | bool
+  tags: latencia
+
+- name: "Desabilitar modo performance da CPU (toggle desligado)"
+  become: true
+  systemd:
+    name: cpu-performance.service
+    enabled: no
+  failed_when: false
+  when: not (cpu_performance | bool)
+  tags: latencia

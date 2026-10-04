@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: dotfiles
+  namespace: rosthan
+  author: Rosthan Silva
+  description: Configuração completa do desktop Linux Mint (Cinnamon, tema Nord, terminal, dev tools, apps)
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+
+dependencies: []

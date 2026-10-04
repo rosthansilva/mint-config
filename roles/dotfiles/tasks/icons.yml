@@ -1,0 +1,22 @@
+---
+- name: "Verificar o tema de ícones atual"
+  command: gsettings get org.cinnamon.desktop.interface icon-theme
+  register: current_icon_theme
+  changed_when: false
+  failed_when: false
+  tags: icons
+
+- name: "Verificar se os arquivos dos ícones Colloid existem"
+  stat:
+    path: "{{ ansible_env.HOME }}/.local/share/icons/Colloid-nord"
+  register: colloid_icons_folder
+  tags: icons
+
+- name: "Sinalizar instalação de ícones"
+  command: /bin/true
+  when: >
+    'Colloid-nord' not in current_icon_theme.stdout or 
+    not colloid_icons_folder.stat.exists
+  notify: "Instalar Colloid Icons"
+  changed_when: true
+  tags: icons

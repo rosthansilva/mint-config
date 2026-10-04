@@ -1,0 +1,131 @@
+---
+- name: "Instalar Git Delta (Melhor visualização de diffs)"
+  become: true
+  apt:
+    name: git-delta
+    state: present
+  tags: git
+
+# Os includeIf dos perfis (git_profiles) são gerados aqui mesmo, e não por
+# blockinfile em git_profiles.yml: esta task roda sempre (tag always) e
+# sobrescreve o arquivo inteiro, então qualquer run com --tags apagava os
+# includeIf e os commits do trabalho saíam com o e-mail/chave pessoal.
+- name: "Configurar .gitconfig (Template)"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.gitconfig"
+    content: |
+      [user]
+        name = {{ nome_completo}}
+        email = {{ email }}
+        # Opcional: Se você configurar assinatura GPG depois
+        # signingkey = YOUR_GPG_KEY_ID
+      
+      [core]
+          editor = {{ "code --wait" if instalar_vscode | bool else "nvim" }}
+          autocrlf = input
+          excludesfile = ~/.gitignore_global
+          pager = delta
+      
+      [init]
+          defaultBranch = main
+      
+      [pull]
+          rebase = true  # Evita commits de merge desnecessários ao baixar alterações
+      
+      [push]
+          autoSetupRemote = true # Salva vidas! Faz o 'git push -u origin branch' automaticamente
+          default = simple
+      
+      [fetch]
+          prune = true # Remove referências locais de branches deletadas no remoto
+      
+      [diff]
+          colorMoved = default
+      
+      [interactive]
+          diffFilter = delta --color-only
+      
+      [delta]
+          # Delta deixa o diff colorido e legível (requer instalação, veja abaixo)
+          navigate = true    # Usa n/N para mover entre diffs
+          light = false      # Tema escuro
+          line-numbers = true
+          side-by-side = true
+      
+      [merge]
+          conflictstyle = diff3
+      
+      [alias]
+          # Atalhos essenciais
+          s = status
+          co = checkout
+          cob = checkout -b
+          br = branch
+          ci = commit
+          st = status
+          unstage = reset HEAD --
+          last = log -1 HEAD
+          
+          # Log visual (muito útil para ver a árvore de commits)
+          lg = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(auto)%d%C(reset)' --all
+          
+          # Limpeza
+          nuke = !git reset --hard HEAD && git clean -fd
+      
+      [credential]
+          helper = store # Ou 'cache --timeout=3600'
+      {% for item in git_profiles %}
+
+      # Perfil "{{ item.name }}": e-mail e chave SSH próprios dentro de ~/{{ item.workspace }}
+      [includeIf "gitdir:~/{{ item.workspace }}/"]
+          path = ~/.gitconfigs_partials/{{ item.name }}.gitconfig
+      {% endfor %}
+    mode: '0644'
+  tags: git
+
+
+- name: "Criar arquivo .gitignore global"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.gitignore_global"
+    mode: '0644'
+    content: |
+      # --- SISTEMA OPERACIONAL ---
+      .DS_Store
+      .DS_Store?
+      ._*
+      .Spotlight-V100
+      .Trashes
+      ehthumbs.db
+      Thumbs.db
+      .directory
+
+      # --- IDEs & EDITORES ---
+      .idea/
+      .vscode/
+      *.swp
+      *.swo
+      *~
+      *.sublime-workspace
+      *.sublime-project
+
+      # --- DEPENDÊNCIAS & BUILD (Rede de segurança) ---
+      node_modules/
+      vendor/
+      dist/
+      build/
+      target/
+      __pycache__/
+      *.pyc
+
+      # --- LOGS & DEBUG ---
+      *.log
+      npm-debug.log*
+      yarn-debug.log*
+      yarn-error.log*
+      .phpunit.result.cache
+
+      # --- AMBIENTE ---
+      .env
+      .env.backup
+      .env.local
+  tags: git

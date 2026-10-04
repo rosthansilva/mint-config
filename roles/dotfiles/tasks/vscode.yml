@@ -1,0 +1,41 @@
+---
+# Repositório oficial da Microsoft no formato deb822 (.sources), o padrão
+# atual do APT. O próprio módulo baixa a chave e grava em
+# /etc/apt/keyrings — sem gpg --dearmor nem arquivo temporário em /tmp, e
+# sem depender de /etc/apt/keyrings já existir (era o bug do vscode.yml
+# antigo da raiz).
+
+- name: "Instalar python3-debian (exigido pelo deb822_repository)"
+  become: true
+  apt:
+    name: python3-debian
+    state: present
+  tags: vscode
+
+- name: "Remover repositório antigo do VS Code (formato .list)"
+  become: true
+  file:
+    path: /etc/apt/sources.list.d/vscode.list
+    state: absent
+  tags: vscode
+
+- name: "Adicionar repositório oficial do VS Code (deb822)"
+  become: true
+  deb822_repository:
+    name: vscode
+    types: deb
+    uris: https://packages.microsoft.com/repos/code
+    suites: stable
+    components: main
+    architectures: amd64
+    signed_by: https://packages.microsoft.com/keys/microsoft.asc
+  register: vscode_repo
+  tags: vscode
+
+- name: "Instalar VS Code"
+  become: true
+  apt:
+    name: code
+    state: present
+    update_cache: "{{ vscode_repo is changed }}"
+  tags: vscode

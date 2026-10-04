@@ -1,0 +1,26 @@
+---
+- name: "Garantir que o diretório de fontes do usuário existe"
+  file:
+    path: "{{ ansible_env.HOME }}/.local/share/fonts"
+    state: directory
+    mode: '0755'
+  tags: fonts
+
+- name: "Verificar se a JetBrains Mono Nerd Font já está instalada"
+  stat:
+    path: "{{ ansible_env.HOME }}/.local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf"
+  register: font_installed
+  tags: fonts
+
+- name: "Baixar e instalar JetBrains Mono Nerd Font"
+  unarchive:
+    src: "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.1.1/JetBrainsMono.zip"
+    dest: "{{ ansible_env.HOME }}/.local/share/fonts"
+    remote_src: yes
+  when: not font_installed.stat.exists
+  tags: fonts
+
+- name: "Atualizar o cache de fontes do sistema"
+  command: fc-cache -fv
+  when: not font_installed.stat.exists
+  tags: fonts

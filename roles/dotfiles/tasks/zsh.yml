@@ -1,0 +1,139 @@
+---
+# ==============================================================================
+# 1. INSTALAÇÃO DO ZSH + OH MY ZSH
+# ==============================================================================
+
+- name: "Instalar Zsh e fzf (fuzzy finder usado pelo plugin fzf)"
+  become: true
+  command: nala install -y zsh fzf
+  register: zsh_install
+  changed_when: "'Installing' in zsh_install.stdout"
+  tags: zsh
+
+- name: "Verificar se o Oh My Zsh já está instalado"
+  stat:
+    path: "{{ ansible_env.HOME }}/.oh-my-zsh"
+  register: omz_stat
+  tags: zsh
+
+- name: "Instalar Oh My Zsh (Unattended)"
+  shell: >
+    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    "" --unattended --keep-zshrc
+  when: not omz_stat.stat.exists
+  tags: zsh
+
+# ==============================================================================
+# 2. PLUGINS EXTERNOS (não vêm junto com o Oh My Zsh)
+# ==============================================================================
+
+- name: "Clonar plugins externos do Zsh"
+  git:
+    repo: "{{ item.repo }}"
+    dest: "{{ ansible_env.HOME }}/.oh-my-zsh/custom/plugins/{{ item.name }}"
+    version: master
+    depth: 1
+  loop:
+    - { name: zsh-autosuggestions, repo: "https://github.com/zsh-users/zsh-autosuggestions.git" }
+    - { name: zsh-syntax-highlighting, repo: "https://github.com/zsh-users/zsh-syntax-highlighting.git" }
+    - { name: zsh-completions, repo: "https://github.com/zsh-users/zsh-completions.git" }
+    - { name: kube-ps1, repo: "https://github.com/jonmosco/kube-ps1.git" }
+  tags: zsh
+
+- name: "Registrar kube-ps1 como plugin do Oh My Zsh (o repo não vem nesse formato)"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.oh-my-zsh/custom/plugins/kube-ps1/kube-ps1.plugin.zsh"
+    content: |
+      source "{{ ansible_env.HOME }}/.oh-my-zsh/custom/plugins/kube-ps1/kube-ps1.sh"
+    mode: '0644'
+  tags: zsh
+
+# ==============================================================================
+# 3. CONFIGURAÇÃO (.zshrc)
+# ==============================================================================
+# Tema desabilitado de propósito: o prompt em si continua sendo o Starship
+# (já configurado com a paleta Nord em terminal.yml/.config/starship.toml).
+# O Oh My Zsh entra só pelo motor de plugins/completions.
+
+- name: "Criar .zshrc (Gerenciado pelo Ansible)"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.zshrc"
+    mode: '0644'
+    content: |
+      # ~/.zshrc — Gerenciado pelo Ansible (role: dotfiles)
+
+      export ZSH="$HOME/.oh-my-zsh"
+      ZSH_THEME=""  # Prompt fica por conta do Starship, lá embaixo
+
+      # DevOps: k8s, docker, terraform, ansible, aws, python
+      plugins=(
+        git
+        docker
+        docker-compose
+        kubectl
+        kube-ps1
+        helm
+        terraform
+        ansible
+        aws
+        pip
+        python
+        virtualenv
+        poetry
+        fzf
+        history-substring-search
+        colored-man-pages
+        command-not-found
+        extract
+        sudo
+        z
+        zsh-autosuggestions
+        zsh-syntax-highlighting
+        zsh-completions
+      )
+
+      source $ZSH/oh-my-zsh.sh
+
+      # Binários instalados por usuário (pipx: podman-compose etc.). O zsh não
+      # lê o ~/.profile, onde o Ubuntu normalmente adiciona esse caminho.
+      export PATH="$HOME/.local/bin:$PATH"
+
+      # Configurações do Podman (mesmo padrão do .bash_helper)
+      export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
+      alias docker='podman'
+      alias docker-compose='podman-compose'
+
+      # Aliases do Nala
+      alias apt='sudo nala'
+      alias install='sudo nala install'
+      alias update='sudo nala update && sudo nala upgrade'
+
+      # Atalhos gerais
+      alias ll='ls -lah --color=auto'
+      alias k='kubectl'
+
+      # kube-ps1: mostra contexto/namespace atual do k8s no prompt direito
+      # (evita rodar comando em produção pensando que estava em outro cluster)
+      KUBE_PS1_SYMBOL_ENABLE=true
+      RPROMPT='$(kube_ps1)'
+
+      # Prompt (Starship — paleta Nord já definida em ~/.config/starship.toml)
+      eval "$(starship init zsh)"
+
+      # Fastfetch ao abrir um terminal interativo
+      if [[ $- == *i* ]]; then
+        fastfetch
+      fi
+    force: yes
+  tags: zsh
+
+# ==============================================================================
+# 4. TORNAR O ZSH O SHELL PADRÃO
+# ==============================================================================
+
+- name: "Definir Zsh como shell padrão do usuário"
+  become: true
+  user:
+    name: "{{ ansible_user_id }}"
+    shell: /usr/bin/zsh
+  tags: zsh

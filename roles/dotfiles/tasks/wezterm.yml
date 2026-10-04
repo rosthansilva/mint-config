@@ -1,0 +1,111 @@
+---
+# ==============================================================================
+# 1. CONFIGURAÇÃO DO REPOSITÓRIO (Método Manual/Oficial)
+# ==============================================================================
+
+- name: "Baixar chave GPG original do WezTerm"
+  become: true
+  get_url:
+    url: https://apt.fury.io/wez/gpg.key
+    dest: /tmp/wezterm-original.key
+    mode: '0644'
+  tags: wezterm
+
+- name: "Converter chave GPG para formato dearmor"
+  become: true
+  shell: gpg --yes --dearmor -o /usr/share/keyrings/wezterm-fury.gpg /tmp/wezterm-original.key
+  tags: wezterm
+
+- name: "Criar arquivo de lista do repositório"
+  become: true
+  copy:
+    dest: /etc/apt/sources.list.d/wezterm.list
+    content: "deb [signed-by=/usr/share/keyrings/wezterm-fury.gpg] https://apt.fury.io/wez/ * *"
+    mode: '0644'
+  tags: wezterm
+
+- name: "Atualizar Cache (Ignorando erros de outros mirrors)"
+  become: true
+  # Usamos apt-get aqui apenas para garantir que o cache atualize sem travar
+  # caso o mirror da UMinho ainda esteja instável.
+  command: apt-get update
+  failed_when: false
+  tags: wezterm
+
+# ==============================================================================
+# 2. INSTALAÇÃO COM NALA
+# ==============================================================================
+
+- name: "Instalar WezTerm via Nala"
+  become: true
+  command: nala install -y wezterm
+  register: wez_install
+  changed_when: "'Installing' in wez_install.stdout"
+  tags: wezterm
+
+# ==============================================================================
+# 3. CONFIGURAÇÃO (LUA)
+# ==============================================================================
+
+- name: "Garantir diretório de configuração"
+  file:
+    path: "{{ ansible_env.HOME }}/.config/wezterm"
+    state: directory
+    mode: '0755'
+  tags: wezterm
+
+- name: "Criar wezterm.lua (Visual Tradicional e Elegante)"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.config/wezterm/wezterm.lua"
+    mode: '0644'
+    content: |
+      local wezterm = require 'wezterm'
+      local config = wezterm.config_builder()
+
+      -- 1. FONTE (JetBrains Mono - A melhor para leitura)
+      config.font = wezterm.font 'JetBrainsMono Nerd Font'
+      config.font_size = 13.0 -- Um pouco maior para conforto visual
+      config.line_height = 1.1 -- Espaçamento entre linhas (mais elegante)
+
+      -- 2. TEMA E CORES (Nord)
+      config.color_scheme = 'Nord'
+      config.window_background_opacity = 0.95 -- Leve transparência
+
+      -- 3. JANELA E BORDAS (O visual "Tradicional")
+      -- "INTEGRATED_BUTTONS" mantém os botões (X, -, +) mas funde com a barra de abas
+      config.window_decorations = "INTEGRATED_BUTTONS|RESIZE"
+      
+      -- Adiciona uma margem interna para o texto não colar na borda
+      config.window_padding = {
+        left = 10,
+        right = 10,
+        top = 10,
+        bottom = 5,
+      }
+
+      -- 4. BARRA DE ABAS (No topo e Bonita)
+      config.use_fancy_tab_bar = true -- Abas com design visual, não apenas texto
+      config.tab_bar_at_bottom = false -- Tradicional: Abas no topo
+      config.hide_tab_bar_if_only_one_tab = false -- Sempre mostra a barra (estilo navegador)
+
+      -- 5. CURSOR
+      config.default_cursor_style = 'BlinkingBar' -- Barra piscante (estilo editor de texto moderno)
+
+      -- 6. SHELL
+      config.default_prog = { '{{ "/usr/bin/zsh" if instalar_zsh | bool else "/bin/bash" }}', '-l' }
+
+      return config
+  tags: wezterm
+
+# ==============================================================================
+# 4. DEFINIR COMO PADRÃO
+# ==============================================================================
+
+- name: "Registrar e Definir WezTerm como emulador padrão"
+  become: true
+  community.general.alternatives:
+    name: x-terminal-emulator
+    link: /usr/bin/x-terminal-emulator
+    path: /usr/bin/wezterm
+    priority: 60
+  tags: wezterm

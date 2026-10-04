@@ -1,0 +1,211 @@
+---
+# Plugins de áudio gratuitos com versão nativa para Linux em VST3/CLAP
+# (o Bitwig não carrega LV2). Cada um tem um toggle "vst_*" no setup.yml.
+# Depois de instalar: Bitwig → Settings → Plug-ins → Rescan.
+
+- name: "Instalar dependências (7z para o LSP)"
+  become: true
+  apt:
+    name: 7zip
+    state: present
+  tags: plugins
+
+- name: "Garantir pastas de plugins e de controle de versão"
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ ansible_env.HOME }}/.vst"
+    - "{{ ansible_env.HOME }}/.vst3"
+    - "{{ ansible_env.HOME }}/.clap"
+    - "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins"
+    - "{{ ansible_env.HOME }}/.cache/dotfiles/verificado"
+  tags: plugins
+
+# Pacotes do apt que já estão na versão atual do projeto.
+- name: "Instalar plugins do repositório (Dragonfly Reverb, ZAM)"
+  become: true
+  apt:
+    name: "{{ item.pacotes }}"
+    state: present
+  loop:
+    - { pacotes: [dragonfly-reverb-vst3], ativo: "{{ vst_dragonfly_reverb }}" }
+    - { pacotes: [zam-plugins], ativo: "{{ vst_zam }}" }
+  loop_control:
+    label: "{{ item.pacotes | join(', ') }}"
+  when: item.ativo | bool
+  tags: plugins
+
+- name: "Instalar plugins do GitHub (última versão de cada)"
+  include_tasks:
+    file: plugin_github.yml
+    apply:
+      tags: plugins
+  loop:
+    # --- Sintetizadores ---
+    - { nome: surge-xt, ativo: "{{ vst_surge_xt }}", repo: surge-synthesizer/releases-xt, padrao: 'linux-x64-.*\.deb$', tipo: deb }
+    - { nome: cardinal, ativo: "{{ vst_cardinal }}", repo: DISTRHO/Cardinal, padrao: 'linux-x86_64-.*\.tar\.gz$', tipo: arquivo }
+    - { nome: chowkick, ativo: "{{ vst_chowkick }}", repo: Chowdhury-DSP/ChowKick, padrao: 'Linux-x64-.*\.deb$', tipo: deb }
+    - { nome: obxd, ativo: "{{ vst_obxd }}", repo: reales/OB-Xd, padrao: 'Obxd.*\.deb$', tipo: deb }
+    # --- Guitarra / NAM ---
+    - { nome: ratatouille, ativo: "{{ vst_ratatouille }}", repo: brummer10/Ratatouille.lv2, padrao: '-clap-v.*-linux-x86_64\.tar\.xz$', tipo: arquivo }
+    - { nome: neuralrack, ativo: "{{ vst_neuralrack }}", repo: brummer10/NeuralRack, padrao: '-clap-linux-x86_64\.tar\.xz$', tipo: arquivo }
+    - { nome: byod, ativo: "{{ vst_byod }}", repo: Chowdhury-DSP/BYOD, padrao: 'Linux-x64-.*\.deb$', tipo: deb }
+    - { nome: chow-tape, ativo: "{{ vst_chow_tape }}", repo: jatinchowdhury18/AnalogTapeModel, padrao: 'Linux-x64-.*\.deb$', tipo: deb }
+    # O .deb do ChowCentaur exige pacotes -dev (libwebkit2gtk-4.0-dev) que
+    # não existem no Mint 22, mas o plugin não usa nenhum deles: só extrai.
+    - { nome: chow-centaur, ativo: "{{ vst_chow_centaur }}", repo: jatinchowdhury18/KlonCentaur, padrao: 'Linux-x64-.*\.deb$', tipo: deb-extrair }
+    # Proteus usa capturas próprias (.json, GuitarML/ToneHunt), não .nam.
+    - { nome: proteus, ativo: "{{ vst_proteus }}", repo: GuitarML/Proteus, padrao: 'Linux-x64-.*\.deb$', tipo: deb }
+    # --- Mix e master ---
+    - { nome: lsp, ativo: "{{ vst_lsp }}", repo: lsp-plugins/lsp-plugins, padrao: 'Linux-x86_64\.7z$', tipo: arquivo }
+    - { nome: zl-equalizer, ativo: "{{ vst_zl_equalizer }}", repo: ZL-Audio/ZLEqualizer, padrao: 'Linux-x86-64\.zip$', tipo: arquivo }
+    - { nome: zl-compressor, ativo: "{{ vst_zl_compressor }}", repo: ZL-Audio/ZLCompressor, padrao: 'Linux-x86-64\.zip$', tipo: arquivo }
+    - { nome: zl-splitter, ativo: "{{ vst_zl_splitter }}", repo: ZL-Audio/ZLSplitter, padrao: 'Linux-x86\.zip$', tipo: arquivo }
+    - { nome: chow-multitool, ativo: "{{ vst_chow_multitool }}", repo: Chowdhury-DSP/ChowMultiTool, padrao: 'Linux-x64-.*\.deb$', tipo: deb }
+    - { nome: zl-spectrum-eq, ativo: "{{ vst_zl_spectrum_eq }}", repo: ZL-Audio/ZLSpectrumEqualizer, padrao: 'Linux-x86-64\.zip$', tipo: arquivo }
+    # Airwindows Consolidated: 300+ processadores (consoles, fita, compressores,
+    # saturação, master) num plugin com interface. Release contínuo na tag DAWPlugin.
+    - { nome: airwindows, ativo: "{{ vst_airwindows }}", repo: baconpaul/airwin2rack, tag: DAWPlugin, padrao: 'Linux\.zip$', tipo: arquivo }
+    - { nome: reevr, ativo: "{{ vst_reevr }}", repo: tiagolr/reevr, padrao: 'linux.*\.zip$', tipo: arquivo }
+    - { nome: qdelay, ativo: "{{ vst_qdelay }}", repo: tiagolr/qdelay, padrao: 'linux.*\.zip$', tipo: arquivo }
+    - { nome: time12, ativo: "{{ vst_time12 }}", repo: tiagolr/time12, padrao: 'linux.*\.zip$', tipo: arquivo }
+    # --- Efeitos criativos ---
+    - { nome: gate12, ativo: "{{ vst_gate12 }}", repo: tiagolr/gate12, padrao: 'linux.*\.zip$', tipo: arquivo }
+    - { nome: filtr, ativo: "{{ vst_filtr }}", repo: tiagolr/filtr, padrao: 'linux.*\.zip$', tipo: arquivo }
+    - { nome: chow-phaser, ativo: "{{ vst_chow_phaser }}", repo: jatinchowdhury18/ChowPhaser, padrao: 'Linux-x64-.*\.deb$', tipo: deb }
+  loop_control:
+    loop_var: plugin
+    label: "{{ plugin.nome }}"
+  when: plugin.ativo | bool
+  tags: plugins
+
+# Plugins baixados do site do próprio fabricante (fora do GitHub).
+- name: "Instalar plugins dos sites dos fabricantes"
+  include_tasks:
+    file: plugin_url.yml
+    apply:
+      tags: plugins
+  loop:
+    # --- Sintetizadores ---
+    - nome: odin2
+      ativo: "{{ vst_odin2 }}"
+      tipo: deb
+      pagina: https://thewavewarden.com/pages/odin-2
+      regex: 'https://www\.dropbox\.com/[^"]*Odin2-synth_[^"?]*\.deb\?[^"]*'
+    - nome: nils-k1v
+      ativo: "{{ vst_nils_k1v }}"
+      tipo: deb
+      url: https://nilsschneider.de/files/NilsK1v-x86_64.deb
+    - nome: podolski
+      ativo: "{{ vst_podolski }}"
+      tipo: uhe
+      pagina: https://u-he.com/products/podolski/
+      regex: 'https://dl\.u-he\.com/releases/Podolski_[0-9_]+_Linux\.tar\.xz'
+    # TyrellN6 3.0 está em "public beta" na u-he.
+    - nome: tyrelln6
+      ativo: "{{ vst_tyrelln6 }}"
+      tipo: uhe
+      pagina: https://u-he.com/products/tyrelln6/
+      regex: 'https://dl\.u-he\.com/releases/TyrellN6_[^"]*_Linux\.tar\.xz'
+    # --- Voz / efeitos ---
+    - nome: graillon
+      ativo: "{{ vst_graillon }}"
+      tipo: arquivo
+      pagina: https://www.auburnsounds.com/products/Graillon.html
+      regex: 'downloads/Graillon-FREE-[0-9.]+\.zip'
+      base: https://www.auburnsounds.com/
+      # O zip traz Windows/Mac/Linux; só a versão CLAP de Linux interessa.
+      subdir: "Graillon-FREE-*/Linux/Linux-64b-CLAP-FREE"
+    - nome: tal-reverb-4
+      ativo: "{{ vst_tal_reverb4 }}"
+      tipo: arquivo
+      url: https://tal-software.com/downloads/plugins/TAL-Reverb-4_64_linux.zip
+    - nome: tal-chorus-lx
+      ativo: "{{ vst_tal_chorus_lx }}"
+      tipo: arquivo
+      url: https://tal-software.com/downloads/plugins/TAL-Chorus-LX_64_linux.zip
+    - nome: tal-dub-x
+      ativo: "{{ vst_tal_dub_x }}"
+      tipo: arquivo
+      url: https://tal-software.com/downloads/plugins/TAL-Dub-X_64_linux.zip
+    - nome: flying-phaser
+      ativo: "{{ vst_flying_phaser }}"
+      tipo: arquivo
+      url: https://superflydsp.com/wp-content/uploads/2021/03/FlyingPhaser_1v3a_Linux.zip
+  loop_control:
+    loop_var: plugin
+    label: "{{ plugin.nome }}"
+  when: plugin.ativo | bool
+  tags: plugins
+
+# ==============================================================================
+# DECENTSAMPLER (sampler; não fica no GitHub)
+# ==============================================================================
+# A página oficial de versões lista os builds no CDN da Decent Samples; pega
+# o de versão mais alta. Instala o VST3 em ~/.vst3/decentsampler.
+
+- name: "Consultar versões do DecentSampler"
+  uri:
+    url: https://store.decentsamples.com/downloads/decent-sampler/versions
+    return_content: yes
+  register: ds_pagina
+  when: vst_decentsampler | bool
+  tags: plugins
+
+- name: "Selecionar o build Linux mais recente do DecentSampler"
+  set_fact:
+    ds_url: >-
+      {{ ds_pagina.content
+         | regex_findall('https://cdn\\.decentsamples\\.com/production/builds/ds/[0-9.]+/Decent_Sampler-[0-9.]+-Linux-x86_64\\.tar\\.gz')
+         | unique | community.general.version_sort | last }}
+  when: vst_decentsampler | bool
+  tags: plugins
+
+- name: "Ler versão instalada do DecentSampler"
+  command: cat "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/decentsampler"
+  register: ds_versao
+  changed_when: false
+  failed_when: false
+  when: vst_decentsampler | bool
+  tags: plugins
+
+- name: "Instalar/atualizar DecentSampler ({{ ds_url | default('') | basename }})"
+  when:
+    - vst_decentsampler | bool
+    - ds_versao.stdout != (ds_url | basename)
+  tags: plugins
+  block:
+    - name: "Baixar e extrair o DecentSampler"
+      unarchive:
+        src: "{{ ds_url }}"
+        dest: /tmp
+        remote_src: yes
+
+    - name: "Copiar o VST3 do DecentSampler para ~/.vst3"
+      shell: |
+        set -eu
+        rm -rf "$HOME/.vst3/decentsampler"
+        mkdir -p "$HOME/.vst3/decentsampler"
+        cp -r "/tmp/{{ ds_url | basename | regex_replace('\\.tar\\.gz$', '') }}/DecentSampler.vst3" "$HOME/.vst3/decentsampler/"
+
+    - name: "Registrar versão instalada do DecentSampler"
+      copy:
+        dest: "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/decentsampler"
+        content: "{{ ds_url | basename }}"
+        mode: '0644'
+  always:
+    - name: "Limpar arquivos temporários do DecentSampler"
+      file:
+        path: "/tmp/{{ ds_url | basename | regex_replace('\\.tar\\.gz$', '') }}"
+        state: absent
+
+- name: "Resumo: plugins que não puderam ser instalados"
+  debug:
+    msg: >-
+      {{ (plugins_com_falha | default([])) | length }} plugin(s) com problema:
+      {{ plugins_com_falha | default([]) | join(', ') }}. O restante foi instalado;
+      rode o playbook de novo mais tarde (pode ter sido falha de rede).
+  when: plugins_com_falha | default([]) | length > 0
+  tags: plugins

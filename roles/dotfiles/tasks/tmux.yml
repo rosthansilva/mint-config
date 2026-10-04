@@ -1,0 +1,117 @@
+---
+# ==============================================================================
+# 1. INSTALAÇÃO DO TMUX + TPM (Tmux Plugin Manager)
+# ==============================================================================
+
+- name: "Instalar Tmux"
+  become: true
+  command: nala install -y tmux
+  register: tmux_install
+  changed_when: "'Installing' in tmux_install.stdout"
+  tags: tmux
+
+- name: "Clonar o TPM (gerenciador de plugins do Tmux)"
+  git:
+    repo: "https://github.com/tmux-plugins/tpm.git"
+    dest: "{{ ansible_env.HOME }}/.tmux/plugins/tpm"
+    version: master
+    depth: 1
+  tags: tmux
+
+# ==============================================================================
+# 2. CONFIGURAÇÃO (.tmux.conf) — Tema Nord + plugins de DevOps
+# ==============================================================================
+
+- name: "Criar .tmux.conf (Gerenciado pelo Ansible)"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.tmux.conf"
+    mode: '0644'
+    content: |
+      # ~/.tmux.conf — Gerenciado pelo Ansible (role: dotfiles)
+      # Tema Nord (nordtheme/tmux) + plugins voltados a workflow DevOps
+
+      # --- Cor verdadeira (necessário pro Nord e a Nerd Font renderizarem certo) ---
+      set -g default-terminal "tmux-256color"
+      set -ag terminal-overrides ",xterm-256color:Tc"
+
+      # --- Comportamento geral ---
+      set -g mouse on
+      set -g history-limit 50000
+      set -g base-index 1
+      setw -g pane-base-index 1
+      set -g renumber-windows on
+      set -g escape-time 10
+      set -g focus-events on
+
+      # --- Teclas ---
+      bind r source-file ~/.tmux.conf \; display-message "Config recarregada!"
+      bind | split-window -h -c "#{pane_current_path}"
+      bind - split-window -v -c "#{pane_current_path}"
+      unbind '"'
+      unbind %
+      setw -g mode-keys vi
+
+      # --- Plugins (baixados/atualizados pelo TPM) ---
+      set -g @plugin 'tmux-plugins/tpm'
+      set -g @plugin 'nordtheme/tmux'
+      set -g @plugin 'tmux-plugins/tmux-sensible'
+      set -g @plugin 'tmux-plugins/tmux-resurrect'
+      set -g @plugin 'tmux-plugins/tmux-continuum'
+      set -g @plugin 'tmux-plugins/tmux-yank'
+      set -g @plugin 'tmux-plugins/tmux-prefix-highlight'
+      set -g @plugin 'tmux-plugins/tmux-cpu'
+      set -g @plugin 'tmux-plugins/tmux-logging'
+
+      # --- Tema Nord ---
+      # Já temos Nerd Font instalada (fonts.yml), então pode usar os glifos.
+      set -g @nord_tmux_no_patched_font "0"
+      set -g @nord_tmux_show_status_content "1"
+      set -g @prefix_highlight_show_copy_mode 'on'
+
+      # --- Resurrect / Continuum: sessão sobrevive a reboot/crash ---
+      set -g @resurrect-capture-pane-contents 'on'
+      set -g @continuum-restore 'on'
+      set -g @continuum-save-interval '15'
+
+      # --- Logging (tmux-plugins/tmux-logging): prefix + Shift-P grava a pane ---
+      set -g @logging-path "$HOME/tmux-logs"
+
+      # --- Bootstrap do TPM (sempre a última linha antes de extras) ---
+      run '~/.tmux/plugins/tpm/tpm'
+
+      # --- Widget extra de CPU/RAM, anexado DEPOIS do tema Nord carregar ---
+      # (o Nord não documenta integração nativa com tmux-cpu; então em vez de
+      # sobrescrever o status-right dele, só acrescentamos no final com -ga)
+      set -ga status-right '#[fg=#4c566a,bg=#2e3440] 🔥#{cpu_percentage} 🐏#{ram_percentage} '
+    force: yes
+  tags: tmux
+
+- name: "Garantir diretório de logs do tmux-logging"
+  file:
+    path: "{{ ansible_env.HOME }}/tmux-logs"
+    state: directory
+    mode: '0755'
+  tags: tmux
+
+# ==============================================================================
+# 3. INSTALAR OS PLUGINS VIA TPM (não interativo)
+# ==============================================================================
+# O install_plugins do TPM precisa de um servidor tmux rodando para ler o
+# .tmux.conf. Sobe uma sessão descartável só para isso e mata em seguida.
+
+- name: "Subir sessão tmux descartável para o TPM instalar os plugins"
+  shell: |
+    tmux kill-session -t ansible-tpm-bootstrap 2>/dev/null || true
+    tmux new-session -d -s ansible-tpm-bootstrap
+  tags: tmux
+
+- name: "Instalar/atualizar plugins do Tmux via TPM"
+  command: "{{ ansible_env.HOME }}/.tmux/plugins/tpm/bin/install_plugins"
+  register: tpm_install
+  changed_when: "'Already installed' not in tpm_install.stdout"
+  tags: tmux
+
+- name: "Encerrar a sessão descartável do TPM"
+  shell: "tmux kill-session -t ansible-tpm-bootstrap 2>/dev/null || true"
+  changed_when: false
+  tags: tmux

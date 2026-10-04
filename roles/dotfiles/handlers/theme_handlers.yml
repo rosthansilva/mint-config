@@ -1,0 +1,23 @@
+---
+- name: "Garantir dependências no Linux Mint"
+  become: true
+  # Usando nala em vez de apt para ignorar mirrors assinados incorretamente se necessário
+  command: nala install -y sassc git gtk2-engines-murrine gnome-themes-extra
+  listen: "Instalar Colloid Theme"
+
+- name: "Rodar script de instalacao do tema"
+  shell: |
+    rm -rf /tmp/colloid-repo
+    git clone --depth 1 https://github.com/vinceliuice/Colloid-gtk-theme.git /tmp/colloid-repo
+    cd /tmp/colloid-repo
+    ./install.sh -t blue -c dark --tweaks nord libadwaita rimless
+    
+    # Aplica no GTK (Apps)
+    gsettings set org.gnome.desktop.interface gtk-theme "{{ theme_name }}"
+    
+    # Aplica no Cinnamon (Painel e Menus) - Comum no Mint
+    gsettings set org.cinnamon.desktop.interface gtk-theme "{{ theme_name }}"
+    gsettings set org.cinnamon.theme name "{{ theme_name }}"
+    
+    rm -rf /tmp/colloid-repo
+  listen: "Instalar Colloid Theme"

@@ -1,0 +1,87 @@
+---
+# Podman rootless no lugar do Docker, com:
+#   - podman-docker: o comando "docker" vira um atalho para o podman;
+#   - podman-compose (versão mais recente, via pipx) para docker-compose.yml;
+#   - socket do usuário exposto como /var/run/docker.sock (VS Code/devcontainers).
+# ATENÇÃO: remove o Docker (docker.io/docker-ce) se estiver instalado.
+
+- name: "Remover pacotes do Docker para evitar conflitos com o Podman"
+  become: true
+  apt:
+    name:
+      - docker
+      - docker-engine
+      - docker.io
+      - containerd
+      - runc
+      - docker-ce
+      - docker-ce-cli
+      - docker-compose-plugin
+      - docker-compose   # v1 (Python), descontinuado — substituído pelo podman-compose
+    state: absent
+    purge: yes
+  tags: podman
+
+- name: "Instalar Podman e compatibilidade com o comando docker"
+  become: true
+  apt:
+    name:
+      - podman
+      - podman-docker
+      - pipx
+    state: present
+  tags: podman
+
+# O podman-compose do apt (1.0.6) está muito atrás da versão atual; o pipx
+# instala a última versão do PyPI isolada em ~/.local (sem mexer no Python do
+# sistema) e é atualizado a cada execução do playbook. Usa os comandos do
+# pipx direto: o módulo community.general.pipx exige um pipx mais novo que o
+# do apt do Ubuntu 24.04 (1.4.3).
+- name: "Instalar podman-compose (última versão, via pipx)"
+  command: pipx install podman-compose
+  args:
+    creates: "{{ ansible_env.HOME }}/.local/share/pipx/venvs/podman-compose"
+  tags: podman
+
+- name: "Atualizar podman-compose para a última versão"
+  command: pipx upgrade podman-compose
+  register: podman_compose_upgrade
+  changed_when: "'upgraded package' in podman_compose_upgrade.stdout"
+  tags: podman
+
+- name: "Garantir que o diretório systemd do usuário existe"
+  file:
+    path: "{{ ansible_env.HOME }}/.config/systemd/user"
+    state: directory
+    mode: '0755'
+  tags: podman
+
+- name: "Configurar registries do Podman (Docker Hub prioritário)"
+  become: true
+  copy:
+    dest: /etc/containers/registries.conf
+    content: |
+      # Configuração gerada via Ansible
+      unqualified-search-registries = ["docker.io", "quay.io", "registry.fedoraproject.org"]
+
+      [[registry]]
+      location = "docker.io"
+  register: podman_registries
+  tags: podman
+
+- name: "Habilitar e iniciar o socket do Podman (User mode)"
+  systemd:
+    name: podman.socket
+    state: "{{ 'restarted' if podman_registries is changed else 'started' }}"
+    enabled: yes
+    scope: user
+  tags: podman
+
+- name: "Criar symlink do Socket Podman para Docker (Crucial para DevContainers)"
+  become: true
+  file:
+    src: /run/user/{{ ansible_user_uid }}/podman/podman.sock
+    dest: /var/run/docker.sock
+    state: link
+    force: yes
+  tags: podman

@@ -1,0 +1,28 @@
+---
+# Steam depende de bibliotecas i386 mesmo em sistema 64-bit. O pacote
+# "steam-installer" vem do multiverse, que o Mint já habilita por padrão.
+- name: "Verificar arquiteturas habilitadas no dpkg"
+  command: dpkg --print-foreign-architectures
+  register: foreign_arches
+  changed_when: false
+  tags: steam
+
+- name: "Habilitar arquitetura i386 (necessária pro Steam)"
+  become: true
+  command: dpkg --add-architecture i386
+  when: "'i386' not in foreign_arches.stdout"
+  tags: steam
+
+- name: "Atualizar cache do APT após habilitar i386"
+  become: true
+  apt:
+    update_cache: yes
+  when: "'i386' not in foreign_arches.stdout"
+  tags: steam
+
+- name: "Instalar Steam"
+  become: true
+  apt:
+    name: steam-installer
+    state: present
+  tags: steam

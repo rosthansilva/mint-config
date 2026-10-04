@@ -1,0 +1,82 @@
+---
+- name: "Instalar GNOME Terminal e dependências do Tema Nord (dconf/uuid) via Nala"
+  become: true
+  command: nala install -y gnome-terminal dconf-cli uuid-runtime
+  register: nala_install
+  # Verifica a saída para saber se houve mudança real (idempotência básica)
+  changed_when: "'Installing' in nala_install.stdout"
+  tags: terminal
+
+# A branch "master" desse repo é uma versão antiga e abandonada baseada em
+# gconftool (GConf não existe mais em distros atuais). O script certo, que
+# usa dconf/gsettings, mora na branch "develop" (é inclusive o branch padrão
+# do repo no GitHub) em "src/nord.sh", não "src/sh/nord.sh".
+- name: "Clonar repositório do Nord Gnome Terminal"
+  git:
+    repo: "https://github.com/nordtheme/gnome-terminal.git"
+    dest: "{{ ansible_env.HOME }}/.nord-gnome-terminal"
+    version: develop
+    force: yes
+  tags: terminal
+
+# --- DESCOBERTA (ANTES) ---
+# "$profile" vem com "/" no final (saída do dconf list) — por isso NÃO tem
+# uma segunda barra antes de visible-name (dconf rejeita barras duplas no
+# caminho da chave).
+- name: "Verificar se o perfil 'Nord' já existe (antes de instalar)"
+  shell: |
+    for profile in $(dconf list /org/gnome/terminal/legacy/profiles:/ | grep '/$'); do
+      if dconf read "/org/gnome/terminal/legacy/profiles:/${profile}visible-name" 2>/dev/null | grep -q "Nord"; then
+        echo "${profile%/}"
+        break
+      fi
+    done
+  register: nord_uuid_before
+  changed_when: false
+  tags: terminal
+
+# --profile só deve ser passado quando o perfil 'Nord' JÁ existe: o script
+# resolve esse nome contra os perfis existentes e, se não encontrar
+# nenhum, aborta com "not a valid profile name" em vez de criar um novo.
+# Sem --profile ele SEMPRE cria um perfil novo clonando o 'default' — por
+# isso só usamos essa forma na primeira instalação.
+- name: "Executar script de instalação do Nord (cria na 1ª vez, atualiza depois)"
+  shell: |
+    if [ -n "{{ nord_uuid_before.stdout }}" ]; then
+      yes | ./nord.sh -p Nord -l 0    # perfil já existe: reaplica/atualiza
+    else
+      yes | ./nord.sh -l 0            # primeira vez: cria clonando o 'default'
+    fi
+  args:
+    chdir: "{{ ansible_env.HOME }}/.nord-gnome-terminal/src"
+  register: nord_install
+  changed_when: "'Installed' in nord_install.stdout or 'applied' in nord_install.stdout"
+  tags: terminal
+
+# --- DESCOBERTA (DEPOIS) ---
+# Na 1ª instalação o UUID é gerado agora, então precisamos descobrir de novo.
+- name: "Descobrir UUID do perfil 'Nord'"
+  shell: |
+    for profile in $(dconf list /org/gnome/terminal/legacy/profiles:/ | grep '/$'); do
+      if dconf read "/org/gnome/terminal/legacy/profiles:/${profile}visible-name" 2>/dev/null | grep -q "Nord"; then
+        echo "${profile%/}"
+        break
+      fi
+    done
+  register: nord_uuid
+  changed_when: false
+  tags: terminal
+
+- name: "Definir Nord como perfil padrão do Terminal"
+  shell: "dconf write /org/gnome/terminal/legacy/profiles:/default \"'{{ nord_uuid.stdout }}'\""
+  when: nord_uuid.stdout | length > 0
+  tags: terminal
+
+# nord.sh só cuida das cores. Sem isso o perfil herda a fonte padrão do
+# sistema e os glifos da Nerd Font (usados pelo Starship/tmux) não aparecem.
+- name: "Forçar fonte JetBrains Mono Nerd Font no perfil Nord"
+  shell: |
+    dconf write "/org/gnome/terminal/legacy/profiles:/{{ nord_uuid.stdout }}/use-system-font" "false"
+    dconf write "/org/gnome/terminal/legacy/profiles:/{{ nord_uuid.stdout }}/font" "'JetBrainsMono Nerd Font 12'"
+  when: nord_uuid.stdout | length > 0
+  tags: terminal

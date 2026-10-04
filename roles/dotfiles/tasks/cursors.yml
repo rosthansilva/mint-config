@@ -1,0 +1,20 @@
+---
+- name: "Garantir que a pasta de ícones local existe"
+  file:
+    path: "{{ ansible_env.HOME }}/.icons"
+    state: directory
+    mode: '0755'
+  tags: cursors
+
+- name: "Extrair cursor Nordic do arquivo local"
+  unarchive:
+    src: Nordic-cursors.tar.xz # O Ansible busca automaticamente na pasta 'files' da role
+    dest: "{{ ansible_env.HOME }}/.icons/"
+    creates: "{{ ansible_env.HOME }}/.icons/Nordic-cursors" # Só extrai se a pasta não existir
+  tags: cursors
+
+- name: "Aplicar tema de cursor no Cinnamon"
+  command: gsettings set org.cinnamon.desktop.interface cursor-theme "Nordic-cursors"
+  register: set_cursor
+  changed_when: "'Nordic-cursors' not in set_cursor.stdout"
+  tags: cursors

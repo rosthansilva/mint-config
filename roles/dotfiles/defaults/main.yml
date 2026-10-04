@@ -1,0 +1,136 @@
+---
+# Valores padrão da role. Tudo aqui pode ser sobrescrito no playbook
+# (setup.yml) ou em group_vars/host_vars. Variáveis definidas no playbook
+# têm precedência sobre estas.
+
+# --- Identidade (sem default: precisa vir do playbook) ---
+# nome_completo: "Seu Nome"
+# email: "voce@exemplo.com"
+
+# --- Visual ---
+theme_name: "Colloid-Teal-Dark-Nord"
+icon_theme_name: "Colloid-Teal-Nord-Dark"
+
+# --- Perfis Git (includeIf por workspace + chave SSH dedicada) ---
+# Cada item: { name, email, workspace (relativo à $HOME), ssh_key }
+git_profiles: []
+
+# --- Ferramentas base (sempre instaladas por apps.yml) ---
+dotfiles_apps:
+  - build-essential
+  - curl
+  - wget
+  - git
+  - ripgrep
+  - fd-find
+  - bat
+  - fzf
+  - btop
+  - jq
+  - tldr
+  - neovim
+  - gnome-terminal
+
+# ==============================================================================
+# O QUE INSTALAR (a lista para editar fica no setup.yml)
+# ==============================================================================
+# Terminal e shell
+instalar_zsh: true
+instalar_tmux: true
+instalar_wezterm: true
+instalar_fastfetch: true
+
+# Desenvolvimento
+instalar_vscode: true
+instalar_podman: true
+instalar_devcontainer: true
+instalar_godot: true
+godot_export_templates: true
+
+# Desktop e utilitários
+instalar_plank: true
+instalar_flameshot: true
+instalar_firefox_tema: true
+instalar_brave: false
+instalar_timeshift: true
+instalar_fdm: true
+instalar_jdownloader: true
+
+# Criação e mídia
+instalar_krita: true
+instalar_kdenlive: true
+instalar_obs: true
+instalar_gimp: true
+instalar_inkscape: true
+instalar_vlc: true
+instalar_aseprite: true
+
+# Áudio / música
+configurar_audio_pro: true
+otimizar_latencia_audio: true
+cpu_performance: true
+instalar_bitwig: true
+instalar_tonelib_zoom: true
+
+# Plugins de áudio (VST3/CLAP nativos para Linux, gratuitos)
+instalar_plugins_audio: true
+vst_surge_xt: true
+vst_cardinal: true
+vst_ratatouille: true
+vst_neuralrack: true
+vst_byod: true
+vst_chow_tape: true
+vst_lsp: true
+vst_zl_equalizer: true
+vst_zl_compressor: true
+vst_zl_splitter: true
+vst_chow_multitool: true
+vst_dragonfly_reverb: true
+vst_zam: true
+vst_gate12: true
+vst_filtr: true
+vst_chowkick: true
+vst_zl_spectrum_eq: true
+vst_airwindows: true
+vst_reevr: true
+vst_qdelay: true
+vst_time12: true
+vst_decentsampler: true
+vst_odin2: true
+vst_obxd: true
+vst_nils_k1v: true
+vst_podolski: true
+vst_tyrelln6: true
+vst_graillon: true
+vst_chow_centaur: true
+vst_chow_phaser: true
+vst_flying_phaser: true
+vst_tal_reverb4: true
+vst_proteus: true
+vst_tal_chorus_lx: true
+vst_tal_dub_x: true
+
+# Jogos
+instalar_steam: true
+instalar_heroic: true
+
+# ==============================================================================
+# AJUSTES
+# ==============================================================================
+# Trocar os mirrors do APT pelos mais rápidos (nala fetch). Só se algum mirror
+# estiver com problema; normalmente o Mint já cuida disso.
+nala_buscar_mirrors: false
+
+# Plugins e apps baixados da internet (GitHub, sites dos fabricantes) só
+# procuram versão nova se a última verificação tiver mais que isso. Evita
+# estourar o limite da API do GitHub (60/hora) ao rodar várias vezes.
+# Para verificar tudo agora: -e dotfiles_forcar_atualizacao=true
+atualizacoes_intervalo_horas: 24
+dotfiles_forcar_atualizacao: false
+
+bitwig_version: "6.1"
+
+# Latência = quantum / sample_rate (256 / 48000 ≈ 5,3 ms)
+pipewire_sample_rate: 48000
+pipewire_quantum: 256
+pipewire_min_quantum: 64

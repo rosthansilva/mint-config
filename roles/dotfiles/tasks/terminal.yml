@@ -1,0 +1,98 @@
+---
+- name: "Validar se o Nala está instalado antes de prosseguir"
+  command: which nala
+  register: nala_check
+  ignore_errors: yes
+  changed_when: false
+  tags: terminal
+
+- name: "Abortar se o Nala não for encontrado"
+  assert:
+    that: nala_check.rc == 0
+    fail_msg: "O Nala precisa ser instalado antes do Terminal. Rode com --tags nala"
+  tags: terminal
+
+- name: "Restaurar .bashrc para o estado original de fábrica"
+  copy:
+    src: "/etc/skel/.bashrc"
+    dest: "{{ ansible_env.HOME }}/.bashrc"
+    remote_src: yes
+    force: yes
+  tags: terminal
+
+- name: "Instalar Starship"
+  become: true
+  shell: curl -sS https://starship.rs/install.sh | sh -s -- -y
+  args:
+    creates: /usr/local/bin/starship
+  tags: terminal
+
+- name: "Verificar Oh My Bash"
+  stat:
+    path: "{{ ansible_env.HOME }}/.oh-my-bash"
+  register: omb_stat
+  tags: terminal
+
+- name: "Instalar Oh My Bash (Unattended)"
+  shell: bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh)" --unattended
+  when: not omb_stat.stat.exists
+  tags: terminal
+
+# Trecho a ser atualizado dentro de tasks/terminal.yml
+- name: "Configurar o arquivo .bash_helper com as variáveis e temas"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.bash_helper"
+    content: |
+      # Helper de customizações (Gerenciado pelo Ansible)
+      
+      # Inicialização do Starship
+      eval "$(starship init bash)"
+      
+      # Configurações do Podman
+      export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
+      alias docker='podman'
+      alias docker-compose='podman-compose'
+      
+      # Aliases do Nala (Gerenciador de pacotes visual)
+      alias apt='sudo nala'
+      alias install='sudo nala install'
+      alias update='sudo nala update && sudo nala upgrade'
+      
+      # Atalhos Gerais
+      alias ll='ls -lah --color=auto'
+
+      # Iniciar Fastfetch se for um terminal interativo
+      if [[ $- == *i* ]]; then
+        fastfetch
+      fi
+    mode: '0644'
+  tags: terminal
+
+- name: "Vincular .bash_helper ao .bashrc limpo"
+  lineinfile:
+    path: "{{ ansible_env.HOME }}/.bashrc"
+    line: "[[ -f ~/.bash_helper ]] && . ~/.bash_helper"
+    insertafter: EOF
+    state: present
+  tags: terminal
+
+- name: "Garantir configuração atualizada do Starship"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.config/starship.toml"
+    content: |
+      palette = "nord_teal"
+
+      [palettes.nord_teal]
+      teal = "#88C0D0"
+      nord_blue = "#81A1C1"
+      nord_red = "#BF616A"
+      nord_night = "#2E3440"
+
+      [character]
+      success_symbol = "[➜](bold teal)"
+      error_symbol = "[➜](bold nord_red)"
+      
+      [directory]
+      style = "bold nord_blue"
+    force: yes
+  tags: terminal

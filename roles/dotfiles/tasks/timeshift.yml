@@ -1,0 +1,16 @@
+---
+# O Mint já traz o Timeshift instalado por padrão na maioria das ISOs; esta
+# task garante que ele exista mesmo assim (ex: instalação mínima). O
+# agendamento de snapshots exige escolher um dispositivo/partição de destino,
+# o que é específico de cada máquina — por isso não é automatizado aqui.
+- name: "Instalar Timeshift"
+  become: true
+  apt:
+    name: timeshift
+    state: present
+  tags: timeshift
+
+- name: "Lembrete: configurar o dispositivo de snapshot"
+  debug:
+    msg: "Timeshift instalado. Rode 'sudo timeshift-gtk' uma vez pra escolher o dispositivo/partição de destino e o agendamento — isso não é automatizado porque depende do layout de disco de cada máquina."
+  tags: timeshift

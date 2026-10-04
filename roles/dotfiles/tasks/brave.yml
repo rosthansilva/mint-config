@@ -1,0 +1,39 @@
+---
+- name: "Instalar dependências (curl)"
+  become: true
+  command: nala install -y curl
+  register: curl_install
+  changed_when: "'Installing' in curl_install.stdout"
+  tags: brave
+
+- name: "Baixar chave GPG oficial do Brave"
+  become: true
+  get_url:
+    url: https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+    dest: /usr/share/keyrings/brave-browser-archive-keyring.gpg
+    mode: '0644'
+    force: yes
+  tags: brave
+
+- name: "Adicionar repositório oficial do Brave"
+  become: true
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg arch=amd64] https://brave-browser-apt-release.s3.brave.com/ stable main"
+    filename: brave-browser-release
+    state: present
+    update_cache: no # IMPORTANTE: Não atualiza aqui para não travar
+  tags: brave
+
+- name: "Forçar atualização do APT (Ignorando falhas de mirrors)"
+  become: true
+  # Aqui está o segredo: Se o servidor da UMinho falhar, o Ansible IGNORA e continua.
+  command: apt-get update
+  failed_when: false 
+  tags: brave
+
+- name: "Instalar Brave Browser (Finalmente)"
+  become: true
+  command: nala install -y brave-browser
+  register: brave_install
+  changed_when: "'Installing' in brave_install.stdout"
+  tags: brave

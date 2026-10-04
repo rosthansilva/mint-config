@@ -1,0 +1,112 @@
+---
+# Ponto de entrada. O jeito recomendado de rodar é pelo ./bootstrap.sh, que
+# pergunta os dados pessoais (nome, e-mail, perfis git) e os passa com
+# -e @~/.config/dotfiles/vars.json.
+#
+# Rodando direto, sem o bootstrap:
+#   ansible-playbook setup.yml -K -e @~/.config/dotfiles/vars.json
+#   ansible-playbook setup.yml -K -e @~/.config/dotfiles/vars.json --tags theme
+- name: "Configuração Completa do Desktop"
+  hosts: localhost
+  connection: local
+  become: false # A role usará 'become: true' apenas nas tarefas que exigem root
+
+  vars:
+    # ==========================================================================
+    # O QUE INSTALAR — troque para false o que você não quer.
+    # Tema, ícones, Cinnamon, fontes, git e ferramentas de linha de comando
+    # (ripgrep, bat, fzf, neovim...) são a base e sempre são aplicados.
+    # ==========================================================================
+
+    # --- Terminal e shell ---
+    instalar_zsh: true          # Zsh + Oh My Zsh + plugins DevOps (vira o shell padrão)
+    instalar_tmux: true         # Tmux + tema Nord + plugins (resurrect, continuum...)
+    instalar_wezterm: true      # Terminal WezTerm
+    instalar_fastfetch: true    # Resumo do sistema no terminal
+
+    # --- Desenvolvimento ---
+    instalar_vscode: true       # Visual Studio Code (repositório oficial da Microsoft)
+    instalar_podman: true       # Podman + podman-compose (substitui o Docker; remove o Docker se instalado)
+    instalar_devcontainer: true # Template de devcontainer Laravel em ~/devcontainer-templates
+    instalar_godot: true        # Godot Engine (última versão estável; integra com o VS Code se ele for instalado)
+    godot_export_templates: true # Templates de exportação do Godot (~1,3 GB)
+
+    # --- Desktop e utilitários ---
+    instalar_plank: true        # Dock Plank com tema Nord e atalhos dos apps escolhidos
+    instalar_flameshot: true    # Flameshot + tecla Print abrindo a captura
+    instalar_firefox_tema: true # Tema Nordic no Firefox
+    instalar_brave: false       # Navegador Brave
+    instalar_timeshift: true    # Snapshots do sistema (Timeshift)
+    instalar_fdm: true          # Free Download Manager (Flatpak, verificado pelo desenvolvedor)
+    instalar_jdownloader: true  # JDownloader 2 (Flatpak mantido pela comunidade)
+
+    # --- Criação e mídia ---
+    instalar_krita: true        # Pintura digital
+    instalar_kdenlive: true     # Edição de vídeo
+    instalar_obs: true          # OBS Studio (gravação/stream, PPA oficial)
+    instalar_gimp: true         # Edição de imagem
+    instalar_inkscape: true     # Vetores
+    instalar_vlc: true          # Player de vídeo
+    instalar_aseprite: true     # Aseprite (pixel art), compilado do código-fonte — leva 10–30 min na 1ª vez
+
+    # --- Áudio / música ---
+    configurar_audio_pro: true  # PipeWire com JACK, tempo real, baixa latência e qpwgraph
+    otimizar_latencia_audio: true # Kernel: preempt=full, threadirqs, USB sem economia (vale após reiniciar)
+    cpu_performance: true       # CPU sempre em modo performance (gasta mais bateria em notebook)
+    instalar_bitwig: true       # Bitwig Studio (DAW) — recomendado junto com o áudio pro
+    bitwig_version: "6.1"
+    instalar_tonelib_zoom: true # Editor das pedaleiras Zoom (roda num Distrobox Ubuntu 22.04; ~500 MB)
+
+    # --- Plugins de áudio (VST3/CLAP grátis, nativos de Linux) ---
+    # Ficam em ~/.vst3 e ~/.clap (ou /usr/lib/vst3 e /usr/lib/clap nos .deb).
+    # No Bitwig: Settings → Plug-ins → Rescan.
+    instalar_plugins_audio: true # Liga/desliga todos os plugins abaixo
+    # Sintetizadores
+    vst_surge_xt: true          # Surge XT: sintetizador completo, centenas de presets
+    vst_cardinal: true          # Cardinal: rack modular (VCV Rack) como plugin (~1,1 GB)
+    vst_chowkick: true          # ChowKick: sintetizador de bumbo
+    vst_decentsampler: true     # DecentSampler: sampler (bibliotecas grátis em decentsamples.com)
+    vst_odin2: true             # Odin 2: sintetizador semi-modular
+    vst_obxd: true              # OB-Xd: emulação do Oberheim OB-X
+    vst_nils_k1v: true          # Nils' K1v: emulação do Kawai K1 (rompler)
+    vst_podolski: true          # Podolski (u-he): sintetizador virtual analógico (VST2)
+    vst_tyrelln6: true          # TyrellN6 (u-he): sintetizador analógico — versão 3.0 em beta
+    # Guitarra / perfis NAM
+    vst_ratatouille: true       # Ratatouille: leitor de perfis .nam/AIDA-X + 2 IRs mixáveis (CLAP)
+    vst_neuralrack: true        # NeuralRack: pedal + EQ + amp .nam/AIDA-X + IR estéreo (CLAP)
+    vst_proteus: true           # Proteus: capturas de pedais/amps reais (formato próprio, não .nam)
+    vst_byod: true              # BYOD: monta cadeias de distorção/amp
+    vst_chow_tape: true         # ChowTapeModel: saturação de fita analógica
+    vst_chow_centaur: true      # ChowCentaur: overdrive estilo Klon Centaur
+    vst_tal_chorus_lx: true     # TAL-Chorus-LX: chorus do Juno-60
+    vst_tal_dub_x: true         # TAL-Dub-X: delay estilo dub/fita
+    # Mix e master
+    vst_lsp: true               # LSP Plugins: ~200 efeitos (EQ, compressores, limiters, medidores, leitor de IR)
+    vst_zl_equalizer: true      # ZL Equalizer 2: EQ dinâmico moderno
+    vst_zl_compressor: true     # ZL Compressor
+    vst_zl_splitter: true       # ZL Splitter: divide L/R, M/S, transientes
+    vst_chow_multitool: true    # ChowMultiTool: EQ, filtros, analisador
+    vst_zl_spectrum_eq: true    # ZL Spectrum Equalizer: EQ dinâmico guiado pelo espectro
+    vst_airwindows: true        # Airwindows Consolidated: 300+ consoles, fita, comp, saturação, master (com interface)
+    vst_dragonfly_reverb: true  # Dragonfly Reverb: hall, sala, plate
+    vst_zam: true               # ZAM Plugins: compressores, EQ, delay leves
+    vst_reevr: true             # Reevr: reverb com envelope desenhável
+    vst_qdelay: true            # QDelay: delay
+    vst_time12: true            # Time-12: delay/time-shaping desenhado por LFO
+    # Efeitos criativos
+    vst_gate12: true            # Gate-12: gate desenhado por LFO (estilo ShaperBox)
+    vst_filtr: true             # Filtr: filtro desenhado por LFO
+    vst_chow_phaser: true       # ChowPhaser: phaser
+    vst_flying_phaser: true     # Flying Phaser: phaser analógico
+    vst_graillon: true          # Graillon 3 Free: correção de afinação/pitch de voz (CLAP)
+    vst_tal_reverb4: true       # TAL-Reverb-4: reverb plate/hall vintage
+
+    # --- Jogos ---
+    instalar_steam: true        # Steam
+    instalar_heroic: true       # Heroic Games Launcher (Epic/GOG/Amazon)
+
+  # Sem "tags: always" aqui: na role ele vale para TODAS as tasks e faz o
+  # --tags ser ignorado (tudo rodava sempre). Os pré-requisitos que precisam
+  # rodar sempre já têm "always" dentro de roles/dotfiles/tasks/main.yml.
+  roles:
+    - role: dotfiles

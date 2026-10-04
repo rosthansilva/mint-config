@@ -1,0 +1,204 @@
+---
+# Aseprite compilado do código-fonte oficial, seguindo o INSTALL.md do
+# projeto (clang + Skia pré-compilado do repositório aseprite/skia).
+#
+# Licença: o Aseprite é "source available". A EULA permite compilar para uso
+# pessoal, mas NÃO permite redistribuir o binário — por isso ele é compilado
+# na máquina de cada pessoa e nunca entra neste repositório.
+#
+# A versão mais recente vem do redirecionamento público de
+# github.com/<repo>/releases/latest (sem usar a API, que tem limite).
+# Compilar leva ~10–30 min e usa ~3 GB temporários; só acontece quando sai
+# versão nova. Resultado: ~/.local/opt/aseprite, comando "aseprite", atalho
+# no menu e no Plank.
+
+- name: "Instalar dependências de compilação do Aseprite"
+  become: true
+  apt:
+    name:
+      - g++
+      - clang
+      - cmake
+      - ninja-build
+      - unzip
+      - libx11-dev
+      - libxcursor-dev
+      - libxi-dev
+      - libxrandr-dev
+      - libgl1-mesa-dev
+      - libfontconfig1-dev
+    state: present
+  tags: aseprite
+
+- name: "Garantir pastas de controle, cache e atalhos"
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ ansible_env.HOME }}/.local/share/dotfiles"
+    - "{{ ansible_env.HOME }}/.cache/dotfiles/verificado"
+    - "{{ ansible_env.HOME }}/.local/share/applications"
+  tags: aseprite
+
+- name: "Ler versão instalada do Aseprite"
+  command: cat "{{ ansible_env.HOME }}/.local/share/dotfiles/aseprite"
+  register: aseprite_instalado
+  changed_when: false
+  failed_when: false
+  tags: aseprite
+
+- name: "Ver última verificação de atualização do Aseprite"
+  stat:
+    path: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/aseprite"
+  register: aseprite_verificado
+  tags: aseprite
+
+- name: "Decidir se precisa verificar atualização do Aseprite"
+  set_fact:
+    aseprite_verificar: >-
+      {{ dotfiles_forcar_atualizacao | bool
+         or aseprite_instalado.rc != 0
+         or not aseprite_verificado.stat.exists
+         or (ansible_date_time.epoch | int - aseprite_verificado.stat.mtime | int)
+            > (atualizacoes_intervalo_horas | int * 3600) }}
+  tags: aseprite
+
+# O GitHub responde "releases/latest" com um redirecionamento para
+# ".../releases/tag/<versão>": basta ler o cabeçalho Location.
+- name: "Descobrir últimas versões do Aseprite e do Skia"
+  uri:
+    url: "https://github.com/{{ item }}/releases/latest"
+    method: HEAD
+    follow_redirects: none
+    status_code: [301, 302]
+  loop:
+    - aseprite/aseprite
+    - aseprite/skia
+  register: aseprite_latest
+  when: aseprite_verificar | bool
+  tags: aseprite
+
+- name: "Definir versões do Aseprite e do Skia"
+  set_fact:
+    aseprite_tag: "{{ aseprite_latest.results[0].location | basename }}"
+    aseprite_skia_tag: "{{ aseprite_latest.results[1].location | basename }}"
+  when: aseprite_verificar | bool
+  tags: aseprite
+
+- name: "Gravar momento da verificação do Aseprite"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/aseprite"
+    content: "{{ ansible_date_time.iso8601 }}"
+    mode: '0644'
+  changed_when: false
+  when: aseprite_verificar | bool
+  tags: aseprite
+
+- name: "Compilar e instalar Aseprite {{ aseprite_tag | default('') }}"
+  when:
+    - aseprite_verificar | bool
+    - aseprite_instalado.stdout != aseprite_tag
+  tags: aseprite
+  vars:
+    aseprite_src: "{{ ansible_env.HOME }}/.cache/dotfiles/aseprite-src"
+    aseprite_skia: "{{ ansible_env.HOME }}/.local/share/dotfiles/skia/{{ aseprite_skia_tag }}"
+    aseprite_destino: "{{ ansible_env.HOME }}/.local/opt/aseprite"
+  block:
+    - name: "Preparar pasta do código-fonte"
+      file:
+        path: "{{ aseprite_src }}"
+        state: "{{ item }}"
+        mode: '0755'
+      loop: [absent, directory]
+
+    - name: "Baixar e extrair o código-fonte do Aseprite {{ aseprite_tag }}"
+      unarchive:
+        src: "https://github.com/aseprite/aseprite/releases/download/{{ aseprite_tag }}/Aseprite-{{ aseprite_tag }}-Source.zip"
+        dest: "{{ aseprite_src }}"
+        remote_src: yes
+
+    # O INSTALL.md de cada versão diz qual branch do Skia ela usa
+    # (ex.: "aseprite-m124"); o Skia pré-compilado precisa ser do mesmo.
+    - name: "Conferir se o Skia pré-compilado é o exigido por esta versão"
+      shell: grep -oE 'aseprite-m[0-9]+' "{{ aseprite_src }}/INSTALL.md" | head -1 | sed 's/aseprite-//'
+      register: aseprite_skia_exigido
+      changed_when: false
+      failed_when: >-
+        aseprite_skia_exigido.stdout == ''
+        or not aseprite_skia_tag.startswith(aseprite_skia_exigido.stdout ~ '-')
+
+    - name: "Garantir pasta do Skia {{ aseprite_skia_tag }}"
+      file:
+        path: "{{ aseprite_skia }}"
+        state: directory
+        mode: '0755'
+
+    - name: "Baixar e extrair o Skia {{ aseprite_skia_tag }} (pré-compilado oficial)"
+      unarchive:
+        src: "https://github.com/aseprite/skia/releases/download/{{ aseprite_skia_tag }}/Skia-Linux-Release-x64.zip"
+        dest: "{{ aseprite_skia }}"
+        remote_src: yes
+        creates: "{{ aseprite_skia }}/out/Release-x64/libskia.a"
+
+    # Exatamente o comando da seção "Linux details" do INSTALL.md.
+    - name: "Configurar a compilação (cmake)"
+      command: >-
+        cmake -S "{{ aseprite_src }}" -B "{{ aseprite_src }}/build"
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        -DCMAKE_CXX_FLAGS:STRING=-stdlib=libstdc++
+        -DCMAKE_EXE_LINKER_FLAGS:STRING=-stdlib=libstdc++
+        -DLAF_BACKEND=skia
+        -DSKIA_DIR={{ aseprite_skia }}
+        -DSKIA_LIBRARY_DIR={{ aseprite_skia }}/out/Release-x64
+        -DSKIA_LIBRARY={{ aseprite_skia }}/out/Release-x64/libskia.a
+        -G Ninja
+      environment:
+        CC: clang
+        CXX: clang++
+
+    - name: "Compilar o Aseprite (ninja — pode levar de 10 a 30 minutos)"
+      command: ninja -C "{{ aseprite_src }}/build" aseprite
+      async: 5400
+      poll: 30
+
+    # build/bin tem o executável e a pasta data/ que ele precisa ao lado.
+    - name: "Instalar em ~/.local/opt/aseprite"
+      shell: |
+        set -eu
+        rm -rf "{{ aseprite_destino }}"
+        mkdir -p "{{ aseprite_destino }}" "$HOME/.local/bin"
+        cp -a "{{ aseprite_src }}/build/bin/." "{{ aseprite_destino }}/"
+        ln -sfn "{{ aseprite_destino }}/aseprite" "$HOME/.local/bin/aseprite"
+
+    - name: "Registrar versão instalada do Aseprite"
+      copy:
+        dest: "{{ ansible_env.HOME }}/.local/share/dotfiles/aseprite"
+        content: "{{ aseprite_tag }}"
+        mode: '0644'
+  always:
+    - name: "Apagar código-fonte e arquivos de compilação (~3 GB)"
+      file:
+        path: "{{ ansible_env.HOME }}/.cache/dotfiles/aseprite-src"
+        state: absent
+
+# Baseado no .desktop oficial (src/desktop/linux/aseprite.desktop), com
+# caminhos absolutos porque o Aseprite fica na pasta do usuário.
+- name: "Criar atalho do Aseprite no menu"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.local/share/applications/aseprite.desktop"
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=Aseprite
+      GenericName=Sprite Editor
+      Comment=Animated sprite editor & pixel art tool
+      Icon={{ ansible_env.HOME }}/.local/opt/aseprite/data/icons/ase256.png
+      Categories=Graphics;2DGraphics;RasterGraphics;
+      Exec={{ ansible_env.HOME }}/.local/bin/aseprite %U
+      TryExec={{ ansible_env.HOME }}/.local/bin/aseprite
+      Terminal=false
+      StartupWMClass=Aseprite
+      MimeType=image/bmp;image/gif;image/jpeg;image/png;image/x-pcx;image/x-tga;image/vnd.microsoft.icon;video/x-flic;image/webp;image/x-aseprite;
+    mode: '0644'
+  tags: aseprite

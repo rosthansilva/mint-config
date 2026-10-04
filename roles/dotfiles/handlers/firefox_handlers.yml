@@ -1,0 +1,5 @@
+---
+- name: "Reiniciar Firefox"
+  debug:
+    msg: "O tema Nordic foi instalado. Por favor, reinicie o Firefox para aplicar as mudanças."
+  listen: "Reiniciar Firefox"

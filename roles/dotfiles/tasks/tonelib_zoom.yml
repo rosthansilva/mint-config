@@ -1,0 +1,186 @@
+---
+# ToneLib-Zoom (editor das pedaleiras Zoom) dentro de um Distrobox com
+# Ubuntu 22.04. O app (4.3, última versão para Linux, de 2020) exige a
+# libwebkit2gtk-4.0, que não existe mais no Ubuntu 24.04 / Mint 22. No
+# container ela continua recebendo correções de segurança (22.04 até 2027)
+# e o sistema principal fica limpo. O app aparece no menu e no Plank como
+# um app normal; USB/MIDI funcionam porque o Distrobox compartilha o /dev.
+
+# --- Distrobox ---------------------------------------------------------------
+# O pacote do apt (1.7.0) é vulnerável ao CVE-2024-29864 (injeção de comando,
+# corrigido na 1.7.0.1) e o Ubuntu 24.04 não aplicou a correção. Por isso:
+# remove o do apt e instala a última versão oficial em ~/.local.
+
+- name: "Remover distrobox do apt (versão vulnerável ao CVE-2024-29864)"
+  become: true
+  apt:
+    name: distrobox
+    state: absent
+  tags: tonelib_zoom
+
+- name: "Instalar Podman (motor de containers do Distrobox)"
+  become: true
+  apt:
+    name: podman
+    state: present
+  tags: tonelib_zoom
+
+- name: "Ler versão instalada do Distrobox"
+  command: cat "{{ ansible_env.HOME }}/.local/share/dotfiles/distrobox"
+  register: distrobox_versao
+  changed_when: false
+  failed_when: false
+  tags: tonelib_zoom
+
+# Cache: instalado e verificado há menos de atualizacoes_intervalo_horas →
+# não consulta o GitHub (limite de 60/hora).
+- name: "Ver última verificação de atualização do Distrobox"
+  stat:
+    path: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/distrobox"
+  register: distrobox_verificado
+  tags: tonelib_zoom
+
+- name: "Decidir se precisa verificar atualização do Distrobox"
+  set_fact:
+    distrobox_verificar: >-
+      {{ dotfiles_forcar_atualizacao | bool
+         or distrobox_versao.rc != 0
+         or not distrobox_verificado.stat.exists
+         or (ansible_date_time.epoch | int - distrobox_verificado.stat.mtime | int)
+            > (atualizacoes_intervalo_horas | int * 3600) }}
+  tags: tonelib_zoom
+
+- name: "Consultar o último release do Distrobox"
+  uri:
+    url: https://api.github.com/repos/89luca89/distrobox/releases/latest
+    headers: "{{ {'Authorization': 'Bearer ' ~ lookup('env', 'GITHUB_TOKEN')} if lookup('env', 'GITHUB_TOKEN') else {} }}"
+    return_content: yes
+    status_code: [200, 403, 429]
+  register: distrobox_release
+  when: distrobox_verificar | bool
+  tags: tonelib_zoom
+
+- name: "Limite da API do GitHub atingido (Distrobox ainda não instalado)"
+  fail:
+    msg: >-
+      A API do GitHub recusou a consulta (limite de 60/hora sem login).
+      Aguarde até uma hora ou rode com GITHUB_TOKEN definido.
+  when:
+    - distrobox_verificar | bool
+    - distrobox_release.status != 200
+    - distrobox_versao.rc != 0
+  tags: tonelib_zoom
+
+- name: "Registrar verificação de atualização do Distrobox"
+  when:
+    - distrobox_verificar | bool
+    - distrobox_release.status == 200
+  tags: tonelib_zoom
+  block:
+    - name: "Garantir pasta do cache de verificações"
+      file:
+        path: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado"
+        state: directory
+        mode: '0755'
+
+    - name: "Gravar momento da verificação do Distrobox"
+      copy:
+        dest: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/distrobox"
+        content: "{{ ansible_date_time.iso8601 }}"
+        mode: '0644'
+      changed_when: false
+
+- name: "Instalar/atualizar Distrobox {{ distrobox_release.json.tag_name | default('') }} em ~/.local"
+  when:
+    - distrobox_verificar | bool
+    - distrobox_release.status == 200
+    - distrobox_versao.stdout != distrobox_release.json.tag_name
+  tags: tonelib_zoom
+  block:
+    - name: "Baixar código do Distrobox {{ distrobox_release.json.tag_name }}"
+      unarchive:
+        src: "https://github.com/89luca89/distrobox/archive/refs/tags/{{ distrobox_release.json.tag_name }}.tar.gz"
+        dest: /tmp
+        remote_src: yes
+
+    - name: "Rodar o instalador oficial do Distrobox (prefixo ~/.local)"
+      command: ./install --prefix "{{ ansible_env.HOME }}/.local"
+      args:
+        chdir: "/tmp/distrobox-{{ distrobox_release.json.tag_name }}"
+
+    - name: "Registrar versão instalada do Distrobox"
+      copy:
+        dest: "{{ ansible_env.HOME }}/.local/share/dotfiles/distrobox"
+        content: "{{ distrobox_release.json.tag_name }}"
+        mode: '0644'
+  always:
+    - name: "Limpar código baixado do Distrobox"
+      file:
+        path: "/tmp/distrobox-{{ distrobox_release.json.tag_name }}"
+        state: absent
+
+# --- Container + ToneLib-Zoom --------------------------------------------------
+
+- name: "Verificar se o container 'tonelib' já existe"
+  command: podman container exists tonelib
+  register: tonelib_container
+  changed_when: false
+  failed_when: false
+  tags: tonelib_zoom
+
+- name: "Criar container Distrobox 'tonelib' (Ubuntu 22.04)"
+  command: >-
+    {{ ansible_env.HOME }}/.local/bin/distrobox create
+    --name tonelib --image docker.io/library/ubuntu:22.04 --yes
+  when: tonelib_container.rc != 0
+  tags: tonelib_zoom
+
+# A pasta home é compartilhada com o container, então o .deb baixado aqui
+# fica visível lá dentro.
+- name: "Garantir pasta de cache para o instalador"
+  file:
+    path: "{{ ansible_env.HOME }}/.cache/dotfiles"
+    state: directory
+    mode: '0755'
+  tags: tonelib_zoom
+
+- name: "Verificar se o ToneLib-Zoom já está instalado no container"
+  command: >-
+    {{ ansible_env.HOME }}/.local/bin/distrobox enter tonelib --
+    dpkg-query -W tonelib-zoom
+  register: tonelib_instalado
+  changed_when: false
+  failed_when: false
+  tags: tonelib_zoom
+
+- name: "Instalar ToneLib-Zoom no container"
+  when: tonelib_instalado.rc != 0
+  tags: tonelib_zoom
+  block:
+    - name: "Baixar ToneLib-Zoom (.deb oficial)"
+      get_url:
+        url: https://www.tonelib.net/download/ToneLib-Zoom-amd64.deb
+        dest: "{{ ansible_env.HOME }}/.cache/dotfiles/ToneLib-Zoom-amd64.deb"
+        mode: '0644'
+
+    - name: "Instalar o .deb dentro do container (com dependências)"
+      command: >-
+        {{ ansible_env.HOME }}/.local/bin/distrobox enter tonelib --
+        sh -c 'sudo apt-get update -qq &&
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq
+        "{{ ansible_env.HOME }}/.cache/dotfiles/ToneLib-Zoom-amd64.deb"'
+  always:
+    - name: "Remover o .deb baixado"
+      file:
+        path: "{{ ansible_env.HOME }}/.cache/dotfiles/ToneLib-Zoom-amd64.deb"
+        state: absent
+
+# Cria o atalho no menu do sistema (~/.local/share/applications), que abre o
+# app de dentro do container.
+- name: "Exportar o ToneLib-Zoom para o menu do sistema"
+  command: >-
+    {{ ansible_env.HOME }}/.local/bin/distrobox enter tonelib --
+    distrobox-export --app ToneLib-Zoom
+  args:
+    creates: "{{ ansible_env.HOME }}/.local/share/applications/tonelib-ToneLib-Zoom.desktop"
+  tags: tonelib_zoom

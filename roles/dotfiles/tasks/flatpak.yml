@@ -1,0 +1,37 @@
+---
+# Apps instalados pelo Flathub (o Mint já vem com Flatpak; aqui garantimos
+# o Flatpak e o remote Flathub para instalações mínimas).
+
+- name: "Instalar Flatpak"
+  become: true
+  apt:
+    name: flatpak
+    state: present
+  tags: flatpak
+
+- name: "Adicionar o repositório Flathub"
+  become: true
+  community.general.flatpak_remote:
+    name: flathub
+    flatpakrepo_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+    state: present
+    method: system
+  tags: flatpak
+
+- name: "Instalar apps do Flathub"
+  become: true
+  community.general.flatpak:
+    name: "{{ item.id }}"
+    remote: flathub
+    state: present
+    method: system
+  loop:
+    # Publicado e verificado pela própria FreeDownloadManager (Flathub).
+    - { id: org.freedownloadmanager.Manager, ativo: "{{ instalar_fdm }}" }
+    # Pacote mantido pela comunidade (não verificado pela AppWork); o app
+    # baixa e atualiza o JDownloader nos servidores oficiais da AppWork.
+    - { id: org.jdownloader.JDownloader, ativo: "{{ instalar_jdownloader }}" }
+  loop_control:
+    label: "{{ item.id }}"
+  when: item.ativo | bool
+  tags: flatpak

@@ -1,0 +1,75 @@
+---
+# PipeWire configurado para produção musical (Bitwig Studio e outros apps
+# JACK). O Mint 22 já usa PipeWire como servidor de áudio; aqui garantimos:
+#   1. pacotes completos (pulse + alsa + jack) e o rtkit;
+#   2. apps JACK (o Bitwig usa libjack) falando com o PipeWire, sem jackd;
+#   3. prioridade de tempo real para o usuário (grupo "pipewire");
+#   4. buffer (quantum) baixo por padrão para latência pequena.
+# Grupos e limites de tempo real só valem após logout/login.
+
+- name: "Instalar PipeWire completo (Pulse, ALSA, JACK), rtkit e qpwgraph"
+  become: true
+  apt:
+    name:
+      - pipewire-audio   # pipewire + wireplumber + pipewire-pulse + pipewire-alsa
+      - pipewire-jack
+      - rtkit
+      - qpwgraph         # patchbay visual: liga entradas/saídas de áudio e MIDI
+    state: present
+  tags: audio
+
+# Equivalente ao exemplo oficial do Debian/Ubuntu
+# (/usr/share/doc/pipewire/examples/ld.so.conf.d/), escrito direto porque
+# algumas instalações mínimas não trazem a pasta de documentação.
+- name: "Fazer apps JACK usarem o PipeWire (libjack do PipeWire)"
+  become: true
+  copy:
+    dest: /etc/ld.so.conf.d/pipewire-jack-{{ ansible_facts.architecture }}-linux-gnu.conf
+    content: |
+      /usr/lib/{{ ansible_facts.architecture }}-linux-gnu/pipewire-0.3/jack/
+    mode: '0644'
+  register: audio_ldconf
+  tags: audio
+
+- name: "Atualizar cache de bibliotecas (ldconfig)"
+  become: true
+  command: ldconfig
+  when: audio_ldconf is changed
+  tags: audio
+
+# O pacote pipewire instala /etc/security/limits.d/25-pw-rlimits.conf
+# (rtprio 95, memlock) para o grupo "pipewire"; o grupo "audio" dá acesso
+# direto a interfaces de áudio/MIDI.
+- name: "Dar prioridade de tempo real ao usuário (grupos pipewire e audio)"
+  become: true
+  user:
+    name: "{{ ansible_user_id }}"
+    groups:
+      - pipewire
+      - audio
+    append: yes
+  tags: audio
+
+- name: "Garantir diretório de configuração do PipeWire do usuário"
+  file:
+    path: "{{ ansible_env.HOME }}/.config/pipewire/pipewire.conf.d"
+    state: directory
+    mode: '0755'
+  tags: audio
+
+# quantum/rate = latência por ciclo. 256/48000 ≈ 5,3 ms. O Bitwig pode pedir
+# outro tamanho de buffer, dentro de min/max-quantum.
+- name: "Configurar baixa latência no PipeWire"
+  copy:
+    dest: "{{ ansible_env.HOME }}/.config/pipewire/pipewire.conf.d/10-baixa-latencia.conf"
+    content: |
+      # Gerenciado pelo Ansible (roles/dotfiles/tasks/audio.yml)
+      context.properties = {
+          default.clock.rate          = {{ pipewire_sample_rate }}
+          default.clock.allowed-rates = [ 44100 48000 88200 96000 ]
+          default.clock.quantum       = {{ pipewire_quantum }}
+          default.clock.min-quantum   = {{ pipewire_min_quantum }}
+          default.clock.max-quantum   = 2048
+      }
+    mode: '0644'
+  tags: audio

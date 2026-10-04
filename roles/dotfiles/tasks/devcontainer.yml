@@ -1,0 +1,213 @@
+---
+# O VS Code em si é instalado por vscode.yml (tag vscode).
+
+# ==============================================================================
+# 1. PREPARAÇÃO DO AMBIENTE HOST
+# ==============================================================================
+
+- name: "Garantir diretório .ssh no host"
+  file:
+    path: "{{ ansible_env.HOME }}/.ssh"
+    state: directory
+    mode: '0700'
+  tags: devcontainer
+
+- name: "Garantir existência do .gitconfig no host"
+  file:
+    path: "{{ ansible_env.HOME }}/.gitconfig"
+    state: touch
+    mode: '0644'
+    modification_time: preserve
+    access_time: preserve
+  tags: devcontainer
+
+# ==============================================================================
+# 2. CRIAÇÃO DO AMBIENTE DEVCONTAINER
+# ==============================================================================
+
+- name: "Garantir diretório do projeto Alpine Laravel"
+  file:
+    path: "{{ ansible_env.HOME }}/devcontainer-templates/alpine-laravel/.devcontainer"
+    state: directory
+    mode: '0755'
+  tags: devcontainer
+
+- name: "Criar Dockerfile (Alpine + Laravel + Phpactor + Standard Bash)"
+  copy:
+    dest: "{{ ansible_env.HOME }}/devcontainer-templates/alpine-laravel/.devcontainer/Dockerfile"
+    content: |
+      FROM docker.io/library/php:8.3-alpine
+
+      # 1. Instalar dependências do sistema
+      RUN apk add --no-cache \
+          git curl zip unzip bash shadow \
+          mysql-client \
+          docker-cli \
+          openssh-client \
+          nodejs npm \
+          icu-dev libzip-dev libpng-dev libxml2-dev oniguruma-dev linux-headers
+
+      # 2. Instalar script helper PHP
+      ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+      
+      # 3. Extensões Laravel & Banco de Dados
+      RUN chmod +x /usr/local/bin/install-php-extensions && \
+          install-php-extensions pdo_mysql pdo_pgsql bcmath zip intl gd mbstring xml tokenizer pcntl sockets
+
+      # 4. Composer
+      COPY --from=docker.io/library/composer:latest /usr/bin/composer /usr/bin/composer
+
+      # 5. Dagger CLI
+      RUN cd /usr/local && \
+          curl -L https://dl.dagger.io/dagger/install.sh | sh
+
+      # 6. Phpactor (Adicionado do Blog - Ferramenta de Refatoração)
+      RUN curl -Lo phpactor.phar https://github.com/phpactor/phpactor/releases/latest/download/phpactor.phar \
+          && chmod a+x phpactor.phar \
+          && mv phpactor.phar /usr/local/bin/phpactor
+
+      # 7. Configurar Usuário e Grupos
+      ARG USERNAME=vscode
+      ARG USER_UID=1000
+      ARG USER_GID=1000
+
+      RUN groupadd --gid $USER_GID $USERNAME \
+          && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+          && (groupadd -g 999 docker || groupadd docker) \
+          && usermod -aG docker $USERNAME \
+          && if getent group 999; then usermod -aG $(getent group 999 | cut -d: -f1) $USERNAME; fi
+
+      # 8. Instalar Oh My Bash (Tema Padrão - Sem sed/customização)
+      USER $USERNAME
+      RUN bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh)" --unattended
+
+      WORKDIR /workspace
+    mode: '0644'
+  tags: devcontainer
+
+# O JSON é montado a partir de um dict YAML + to_nice_json: assim os
+# comentários ficam aqui no Ansible e o arquivo gerado é sempre JSON
+# válido (antes os comentários // iam pro arquivo e quebravam o verify).
+- name: "Criar devcontainer.json (Settings do Blog + Tasks)"
+  vars:
+    devcontainer_config:
+      name: "Alpine Laravel Dagger"
+      build:
+        dockerfile: "Dockerfile"
+      features:
+        "ghcr.io/devcontainers/features/git:1": {}
+      mounts:
+        # Socket real do Podman (rootless). Não usar /var/run/docker.sock:
+        # o symlink criado em podman.yml fica em tmpfs e some no reboot.
+        - "source=${localEnv:XDG_RUNTIME_DIR}/podman/podman.sock,target=/var/run/docker.sock,type=bind"
+        - "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly"
+        - "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly"
+        - "source=${localEnv:HOME}/workspace,target=/home/vscode/workspace,type=bind"
+      customizations:
+        vscode:
+          settings:
+            terminal.integrated.defaultProfile.linux: "bash"
+            php.validate.executablePath: "/usr/local/bin/php"
+            editor.fontFamily: "'JetBrainsMono Nerd Font', 'Droid Sans Mono', monospace"
+
+            # --- TEMA (Nord Deep) ---
+            workbench.colorTheme: "Nord Deep"
+            workbench.iconTheme: "material-icon-theme"
+
+            # --- CONFIGURAÇÕES GERAIS (Do Blog) ---
+            files.autoSave: "onFocusChange"
+            files.eol: "\n"
+            files.insertFinalNewline: true
+            files.trimFinalNewlines: true
+            files.trimTrailingWhitespace: true
+
+            # --- PHP & INTELEPHENSE ---
+            php.validate.enable: false # Desativa validação nativa p/ usar Intelephense
+            php.suggest.basic: false
+            intelephense.telemetry.enabled: false
+            "[php]":
+              editor.defaultFormatter: "bmewburn.vscode-intelephense-client"
+
+            # --- BLADE & FORMATTING ---
+            editor.formatOnSave: true
+            "[blade]":
+              editor.defaultFormatter: "esbenp.prettier-vscode" # Blog recomenda Prettier p/ Blade
+              editor.autoClosingBrackets: "always"
+            "[javascript]":
+              editor.defaultFormatter: "esbenp.prettier-vscode"
+            "[json]":
+              editor.defaultFormatter: "esbenp.prettier-vscode"
+
+          extensions:
+            # --- UI & TEMA ---
+            - marlosirapuan.nord-deep
+            - PKief.material-icon-theme
+            - editorconfig.editorconfig
+
+            # --- UTILITÁRIOS GERAIS ---
+            - eamodio.gitlens
+            - mikstead.dotenv
+            - esbenp.prettier-vscode
+            - formulahendry.code-runner
+            - gruntfuggly.todo-tree
+            - alefragnani.Bookmarks
+
+            # --- LARAVEL & PHP (Turbinado pelo Blog) ---
+            - bmewburn.vscode-intelephense-client
+            - onecentlin.laravel-blade
+            - biati.laravel-extra-intellisense
+            - shufo.vscode-blade-formatter
+            - bradlc.vscode-tailwindcss
+            - xdebug.php-debug
+            - phpactor.vscode-phpactor     # Refatoração
+            - codingyu.laravel-goto        # Navegação rápida
+            - m1guelpf.better-pest         # Testes Pest
+            - calebporzio.better-phpunit   # Testes PHPUnit
+            - ryannaddy.laravel-artisan
+            - codingyu.laravel-goto-view
+            - onecentlin.laravel-extension-pack
+
+            # --- BANCO DE DADOS ---
+            - mtxr.sqltools
+            - mtxr.sqltools-driver-pg
+            - mtxr.sqltools-driver-mysql
+
+            # --- CLOUD & INFRA ---
+            - amazonwebservices.aws-toolkit-vscode
+            - hashicorp.terraform
+            - redhat.ansible
+            - ms-azuretools.vscode-docker
+            - redhat.vscode-yaml
+            - dagger.dagger
+
+            # --- SERVIDORES & SSH ---
+            - tcantony.vscode-ssh-config
+            - natizyskunk.sftp
+            - timonwong.shellcheck
+
+            # --- PYTHON, IA & DADOS ---
+            - ms-python.python
+            - ms-python.vscode-pylance
+            - ms-toolsai.jupyter
+            - njpwerner.autodocstring
+
+            # --- API ---
+            - postman.postman-for-vscode
+            - humao.rest-client
+            - mechatroner.rainbow-csv
+
+      # Tarefas úteis (Do Blog) - Disponíveis via Ctrl+Shift+P > Run Task
+      tasks:
+        version: "2.0.0"
+        tasks:
+          - label: "Laravel IDE Helper"
+            type: "shell"
+            command: "composer ide-helper"
+
+      remoteUser: "vscode"
+      updateRemoteUserUID: true
+  copy:
+    dest: "{{ ansible_env.HOME }}/devcontainer-templates/alpine-laravel/.devcontainer/devcontainer.json"
+    content: "{{ devcontainer_config | to_nice_json(indent=2) }}\n"
+    mode: '0644'
+  tags: devcontainer

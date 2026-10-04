@@ -1,0 +1,68 @@
+---
+# Descobre o arquivo de UM plugin no GitHub e instala via plugin_instalar.yml.
+# Variável "plugin" do loop: { nome, repo, padrao (regex do arquivo), tipo,
+# tag (opcional: release fixo, ex.: DAWPlugin do Airwindows), subdir }.
+
+- name: "[{{ plugin.nome }}] Verificar se já está instalado"
+  stat:
+    path: "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/{{ plugin.nome }}"
+  register: plugin_registro
+
+# Cache: se o plugin já está instalado e foi verificado há menos de
+# atualizacoes_intervalo_horas, não consulta o GitHub de novo.
+- name: "[{{ plugin.nome }}] Ver quando foi a última verificação"
+  stat:
+    path: "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/{{ plugin.nome }}"
+  register: plugin_verificado
+
+- name: "[{{ plugin.nome }}] Decidir se precisa verificar atualização"
+  set_fact:
+    plugin_verificar: >-
+      {{ dotfiles_forcar_atualizacao | bool
+         or not plugin_registro.stat.exists
+         or not plugin_verificado.stat.exists
+         or (ansible_date_time.epoch | int - plugin_verificado.stat.mtime | int)
+            > (atualizacoes_intervalo_horas | int * 3600) }}
+
+# A API do GitHub permite 60 consultas/hora sem login. Com a variável de
+# ambiente GITHUB_TOKEN definida (opcional) o limite sobe; o token nunca é
+# gravado em arquivo.
+- name: "[{{ plugin.nome }}] Consultar release no GitHub"
+  uri:
+    url: "https://api.github.com/repos/{{ plugin.repo }}/releases/{{ ('tags/' ~ plugin.tag) if plugin.tag is defined else 'latest' }}"
+    headers: "{{ {'Authorization': 'Bearer ' ~ lookup('env', 'GITHUB_TOKEN')} if lookup('env', 'GITHUB_TOKEN') else {} }}"
+    return_content: yes
+    status_code: [200, 403, 429]
+  register: plugin_release
+  when: plugin_verificar | bool
+
+# Sem resposta da API (limite atingido): se o plugin já está instalado,
+# mantém a versão atual e segue; se não está, falha com a explicação.
+- name: "[{{ plugin.nome }}] Limite da API do GitHub atingido"
+  fail:
+    msg: >-
+      A API do GitHub recusou a consulta (limite de 60/hora sem login).
+      Aguarde até uma hora ou rode com GITHUB_TOKEN definido
+      (export GITHUB_TOKEN=... com um token sem permissões extras).
+  when:
+    - plugin_verificar | bool
+    - plugin_release.status != 200
+    - not plugin_registro.stat.exists
+
+- name: "[{{ plugin.nome }}] Selecionar arquivo do release"
+  set_fact:
+    plugin_asset: "{{ plugin_release.json.assets | selectattr('name', 'search', plugin.padrao) | first }}"
+  when:
+    - plugin_verificar | bool
+    - plugin_release.status == 200
+
+- name: "[{{ plugin.nome }}] Instalar"
+  include_tasks: plugin_instalar.yml
+  vars:
+    plugin_download_url: "{{ plugin_asset.browser_download_url }}"
+    plugin_arquivo: "{{ plugin_asset.name }}"
+    # O GitHub publica o SHA-256 dos arquivos enviados a partir de 2025.
+    plugin_checksum: "{{ plugin_asset.digest | default('', true) }}"
+  when:
+    - plugin_verificar | bool
+    - plugin_release.status == 200

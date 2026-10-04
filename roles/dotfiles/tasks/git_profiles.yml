@@ -1,0 +1,33 @@
+---
+- name: "Garantir diretório base para configurações parciais do Git"
+  file:
+    path: "{{ ansible_env.HOME }}/.gitconfigs_partials"
+    state: directory
+    mode: '0755'
+  tags: git_profiles
+
+# ==============================================================================
+# LOOP PRINCIPAL: Processa cada empresa da lista
+# ==============================================================================
+
+- name: "Configurar Ambientes de Trabalho (Pastas, SSH e Git)"
+  include_tasks: git_profile_item.yml
+  loop: "{{ git_profiles }}"
+  loop_control:
+    loop_var: profile
+  tags: git_profiles
+
+# Os includeIf no ~/.gitconfig principal são gerados por git.yml.
+
+- name: "LER chaves públicas geradas"
+  shell: "cat {{ ansible_env.HOME }}/.ssh/{{ item.ssh_key }}.pub"
+  loop: "{{ git_profiles }}"
+  register: pub_keys
+  changed_when: false
+
+- name: "MOSTRAR chaves públicas (Copie e adicione ao GitHub)"
+  debug:
+    msg: 
+      - "--- CHAVE PARA {{ item.item.name }} ({{ item.item.email }}) ---"
+      - "{{ item.stdout }}"
+  loop: "{{ pub_keys.results }}"

@@ -1,0 +1,53 @@
+---
+# Plugins distribuídos pelo site do fabricante (fora do GitHub).
+# Variável "plugin" do loop:
+#   url      link fixo do arquivo, OU
+#   pagina + regex  página oficial onde o link (que muda a cada versão) é
+#                   procurado; "base" é prefixado quando o link é relativo.
+# Depois instala via plugin_instalar.yml.
+
+# Cache: se o plugin já está instalado e foi verificado há menos de
+# atualizacoes_intervalo_horas, não acessa o site de novo.
+- name: "[{{ plugin.nome }}] Verificar instalação e última verificação"
+  stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/{{ plugin.nome }}"
+    - "{{ ansible_env.HOME }}/.cache/dotfiles/verificado/{{ plugin.nome }}"
+  register: plugin_stats
+
+- name: "[{{ plugin.nome }}] Decidir se precisa verificar atualização"
+  set_fact:
+    plugin_verificar: >-
+      {{ dotfiles_forcar_atualizacao | bool
+         or not plugin_stats.results[0].stat.exists
+         or not plugin_stats.results[1].stat.exists
+         or (ansible_date_time.epoch | int - plugin_stats.results[1].stat.mtime | int)
+            > (atualizacoes_intervalo_horas | int * 3600) }}
+
+- name: "[{{ plugin.nome }}] Ler página de download"
+  uri:
+    url: "{{ plugin.pagina }}"
+    return_content: yes
+    headers:
+      User-Agent: "Mozilla/5.0"
+  register: plugin_pagina
+  when:
+    - plugin_verificar | bool
+    - plugin.pagina is defined
+
+- name: "[{{ plugin.nome }}] Encontrar link de download"
+  set_fact:
+    plugin_link: >-
+      {{ plugin.url if plugin.url is defined else
+         (plugin.base | default('')) ~ (plugin_pagina.content | regex_search(plugin.regex) | replace('&amp;', '&')) }}
+  when: plugin_verificar | bool
+
+# Links do Dropbox têm parâmetros (?rlkey=...&dl=1): o nome do arquivo é a
+# parte antes do "?".
+- name: "[{{ plugin.nome }}] Instalar"
+  include_tasks: plugin_instalar.yml
+  vars:
+    plugin_download_url: "{{ plugin_link }}"
+    plugin_arquivo: "{{ plugin_link | regex_replace('\\?.*$', '') | basename | urldecode }}"
+  when: plugin_verificar | bool

@@ -1,0 +1,254 @@
+---
+# Checagens de conteúdo que o Ansible sozinho não pega, porque os módulos
+# `copy`/`template` escrevem o arquivo com sucesso mesmo que o conteúdo
+# gerado seja inválido (ex.: JSON quebrado).
+- name: Verify
+  hosts: all
+  become: false
+  tasks:
+    - name: devcontainer.json precisa ser JSON válido
+      command: >
+        python3 -c "import json; json.load(open('{{ ansible_env.HOME }}/devcontainer-templates/alpine-laravel/.devcontainer/devcontainer.json'))"
+      changed_when: false
+
+    - name: .gitconfig precisa existir e ter os includeIf dos 3 perfis
+      command: grep -c "includeIf" "{{ ansible_env.HOME }}/.gitconfig"
+      register: gitconfig_blocks
+      changed_when: false
+      failed_when: gitconfig_blocks.stdout | int != 3
+
+    - name: Perfil default-release do Firefox precisa existir
+      shell: "ls -d {{ ansible_env.HOME }}/.mozilla/firefox/*.default-release"
+      changed_when: false
+
+    - name: Launchers do Plank precisam ter sido copiados
+      find:
+        paths: "{{ ansible_env.HOME }}/.config/plank/dock1/launchers"
+        patterns: "*.dockitem"
+      register: plank_launchers
+      failed_when: plank_launchers.matched == 0
+
+    - name: Tema Nord-Colloid do Plank precisa existir e estar ativo
+      shell: |
+        set -e
+        test -f "{{ ansible_env.HOME }}/.local/share/plank/themes/Nord-Colloid/dock.theme"
+        [ "$(dconf read /net/launchpad/plank/docks/dock1/theme)" = "'Nord-Colloid'" ]
+      changed_when: false
+
+    - name: Oh My Zsh precisa estar instalado com os plugins externos
+      find:
+        paths: "{{ ansible_env.HOME }}/.oh-my-zsh/custom/plugins"
+        patterns:
+          - zsh-autosuggestions
+          - zsh-syntax-highlighting
+          - zsh-completions
+          - kube-ps1
+        file_type: directory
+      register: zsh_plugins
+      failed_when: zsh_plugins.matched != 4
+
+    - name: .zshrc precisa apontar pro Oh My Zsh e pro Starship
+      command: grep -c "oh-my-zsh.sh\|starship init zsh" "{{ ansible_env.HOME }}/.zshrc"
+      register: zshrc_check
+      changed_when: false
+      failed_when: zshrc_check.stdout | int != 2
+
+    - name: Shell padrão do usuário precisa ser o Zsh
+      command: getent passwd {{ ansible_user_id }}
+      register: passwd_entry
+      changed_when: false
+      failed_when: "'/zsh' not in passwd_entry.stdout"
+
+    - name: Tmux precisa ter o TPM e o tema Nord configurados
+      command: grep -c "nordtheme/tmux" "{{ ansible_env.HOME }}/.tmux.conf"
+      register: tmux_conf_check
+      changed_when: false
+      failed_when: tmux_conf_check.stdout | int == 0
+
+    - name: Plugins do Tmux precisam ter sido baixados pelo TPM
+      # O TPM nomeia a pasta pelo nome do repo, não do usuário/org — por isso
+      # o tema "nordtheme/tmux" cai na pasta "tmux" (mesmo nome do repo).
+      find:
+        paths: "{{ ansible_env.HOME }}/.tmux/plugins"
+        patterns:
+          - tmux
+          - tmux-resurrect
+          - tmux-continuum
+          - tmux-cpu
+        file_type: directory
+      register: tmux_plugins
+      failed_when: tmux_plugins.matched != 4
+
+    - name: Perfil Nord do GNOME Terminal precisa existir e ser o padrão
+      shell: |
+        set -e -o pipefail
+        for profile in $(dconf list /org/gnome/terminal/legacy/profiles:/ | grep -v default); do
+          if dconf read "/org/gnome/terminal/legacy/profiles:/${profile}visible-name" | grep -q "Nord"; then
+            echo "${profile%/}"
+            exit 0
+          fi
+        done
+        exit 1
+      args:
+        executable: /bin/bash
+      register: nord_profile_check
+      changed_when: false
+      failed_when: nord_profile_check.rc != 0
+
+    - name: Neovim e OBS precisam vir dos PPAs (não do repositório padrão)
+      shell: |
+        set -e -o pipefail
+        apt-cache policy {{ item }} | grep -A1 '\*\*\*' | grep -q ppa.launchpadcontent.net
+      args:
+        executable: /bin/bash
+      changed_when: false
+      loop:
+        - neovim
+        - obs-studio
+
+    - name: Symlinks bat/fd precisam funcionar
+      command: "{{ item }} --version"
+      changed_when: false
+      loop:
+        - bat
+        - fd
+
+    - name: VS Code precisa estar instalado via repositório deb822 (sem .list duplicado)
+      shell: |
+        set -e
+        command -v code
+        test -f /etc/apt/sources.list.d/vscode.sources
+        test ! -f /etc/apt/sources.list.d/vscode.list
+      changed_when: false
+
+    - name: Godot precisa estar instalado, no menu e no Plank
+      shell: |
+        set -e
+        godot --version
+        test -f /usr/share/applications/godot.desktop
+        test -f "{{ ansible_env.HOME }}/.config/plank/dock1/launchers/godot.dockitem"
+      changed_when: false
+
+    - name: Tecla Print precisa abrir o "flameshot gui"
+      shell: |
+        set -e
+        [ "$(dconf read /org/cinnamon/desktop/keybindings/media-keys/screenshot)" = "@as []" ]
+        [ "$(dconf read /org/cinnamon/desktop/keybindings/custom-keybindings/flameshot/command)" = "'flameshot gui'" ]
+        [ "$(dconf read /org/cinnamon/desktop/keybindings/custom-keybindings/flameshot/binding)" = "['Print']" ]
+        dconf read /org/cinnamon/desktop/keybindings/custom-list | grep -q "'flameshot'"
+      changed_when: false
+
+    - name: Apps JACK precisam usar o PipeWire (libjack do PipeWire no ldconfig)
+      shell: ldconfig -p | grep "libjack.so.0 " | head -1 | grep -q pipewire-0.3
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Usuário precisa estar nos grupos de tempo real (pipewire e audio)
+      command: id -nG {{ ansible_user_id }}
+      register: grupos_usuario
+      changed_when: false
+      failed_when: "'pipewire' not in grupos_usuario.stdout.split() or 'audio' not in grupos_usuario.stdout.split()"
+
+    - name: Baixa latência precisa estar configurada no PipeWire
+      command: grep -q "default.clock.quantum *= *256" "{{ ansible_env.HOME }}/.config/pipewire/pipewire.conf.d/10-baixa-latencia.conf"
+      changed_when: false
+
+    - name: Bitwig Studio 6.1 precisa estar instalado e no Plank
+      shell: |
+        set -e
+        [ "$(dpkg-query -W -f='${Version}' bitwig-studio)" = "6.1" ]
+        test -f "{{ ansible_env.HOME }}/.config/plank/dock1/launchers/com.bitwig.BitwigStudio.dockitem"
+      changed_when: false
+
+    - name: podman-compose precisa estar instalado (via pipx) e funcionando
+      command: "{{ ansible_env.HOME }}/.local/bin/podman-compose --version"
+      changed_when: false
+
+    - name: Parâmetros de baixa latência precisam estar no GRUB
+      command: grep -q "preempt=full threadirqs usbcore.autosuspend=-1" /etc/default/grub.d/99-audio-baixa-latencia.cfg
+      changed_when: false
+
+    - name: Serviço de CPU em modo performance precisa estar habilitado
+      command: systemctl is-enabled cpu-performance.service
+      changed_when: false
+
+    - name: qpwgraph precisa estar instalado
+      command: dpkg-query -W qpwgraph
+      changed_when: false
+
+    - name: Export templates do Godot precisam estar na pasta da versão
+      shell: ls -d {{ ansible_env.HOME }}/.local/share/godot/export_templates/*.stable/linux_release.x86_64
+      changed_when: false
+
+    - name: Godot precisa usar o VS Code como editor externo
+      shell: grep -q 'text_editor/external/use_external_editor = true' {{ ansible_env.HOME }}/.config/godot/editor_settings-*.tres
+      changed_when: false
+
+    - name: Plugins NAM (CLAP) precisam estar em ~/.clap
+      shell: |
+        set -e
+        ls {{ ansible_env.HOME }}/.clap/ratatouille/*.clap
+        ls {{ ansible_env.HOME }}/.clap/neuralrack/*.clap
+      changed_when: false
+
+    - name: Plugins de mix/master (VST3) precisam estar em ~/.vst3
+      shell: |
+        set -e
+        ls -d {{ ansible_env.HOME }}/.vst3/lsp/*.vst3
+        ls -d {{ ansible_env.HOME }}/.vst3/zl-equalizer/*.vst3
+        ls -d {{ ansible_env.HOME }}/.vst3/zl-compressor/*.vst3
+        ls -d {{ ansible_env.HOME }}/.vst3/cardinal/*.vst3
+      changed_when: false
+
+    - name: Plugins instalados por .deb e apt precisam estar presentes
+      command: dpkg-query -W surge-xt byod chowtapemodel chowmultitool dragonfly-reverb-vst3 zam-plugins
+      changed_when: false
+
+    - name: Free Download Manager e JDownloader precisam estar instalados (Flatpak)
+      command: flatpak info {{ item }}
+      loop:
+        - org.freedownloadmanager.Manager
+        - org.jdownloader.JDownloader
+      changed_when: false
+
+    - name: ToneLib-Zoom precisa estar instalado no Distrobox e exportado pro menu
+      shell: |
+        set -e
+        {{ ansible_env.HOME }}/.local/bin/distrobox enter tonelib -- dpkg-query -W tonelib-zoom
+        test -f {{ ansible_env.HOME }}/.local/share/applications/tonelib-ToneLib-Zoom.desktop
+      changed_when: false
+
+    - name: Airwindows (VST3 + CLAP), DecentSampler e efeitos novos precisam estar instalados
+      shell: |
+        set -e
+        ls -d "{{ ansible_env.HOME }}/.vst3/airwindows/Airwindows Consolidated.vst3"
+        ls "{{ ansible_env.HOME }}/.clap/airwindows/Airwindows Consolidated.clap"
+        test -z "$(find {{ ansible_env.HOME }}/.clap -name '*.vst3')"   # nenhum VST3 duplicado em ~/.clap
+        ls -d {{ ansible_env.HOME }}/.vst3/decentsampler/DecentSampler.vst3
+        ls -d {{ ansible_env.HOME }}/.vst3/zl-spectrum-eq/*.vst3
+        ls -d {{ ansible_env.HOME }}/.vst3/reevr/*.vst3 {{ ansible_env.HOME }}/.vst3/qdelay/*.vst3 {{ ansible_env.HOME }}/.vst3/time12/*.vst3
+        dpkg-query -W chowkick
+      changed_when: false
+
+    - name: Plugins dos sites dos fabricantes e novos do GitHub precisam estar instalados
+      shell: |
+        set -e
+        dpkg-query -W odin2-synth obxd nilsk1v chowphaser 2>&1 || dpkg -l | grep -iE "odin|obxd|k1v|centaur|phaser"
+        ls {{ ansible_env.HOME }}/.vst/Podolski* {{ ansible_env.HOME }}/.vst/TyrellN6* -d
+        ls {{ ansible_env.HOME }}/.clap/graillon/*.clap
+        test -z "$(find {{ ansible_env.HOME }}/.vst3/graillon {{ ansible_env.HOME }}/.clap/graillon -iname '*win*' -o -iname '*mac*' 2>/dev/null)"
+        ls -d {{ ansible_env.HOME }}/.vst3/tal-reverb-4/*.vst3 {{ ansible_env.HOME }}/.vst3/flying-phaser/*.vst3
+        ls -d {{ ansible_env.HOME }}/.vst3/chow-centaur/ChowCentaur.vst3
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Aseprite precisa estar compilado, abrir e ter atalho no menu e no Plank
+      shell: |
+        set -e
+        {{ ansible_env.HOME }}/.local/bin/aseprite --version
+        test -f {{ ansible_env.HOME }}/.local/opt/aseprite/data/icons/ase256.png
+        test -f {{ ansible_env.HOME }}/.local/share/applications/aseprite.desktop
+        test -f {{ ansible_env.HOME }}/.config/plank/dock1/launchers/aseprite.dockitem
+      changed_when: false
