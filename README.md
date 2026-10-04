@@ -56,7 +56,7 @@ comentário explicando o que é. Troque para `false` o que não quiser. O dock
 | Desenvolvimento | VS Code, Podman + podman-compose, template de devcontainer, Godot (+ export templates e integração com o VS Code), VPN do Azure (OpenVPN/strongSwan) |
 | Desktop | Plank, Flameshot (tecla Print), tema do Firefox, Brave, Timeshift, Free Download Manager e JDownloader (Flatpak) |
 | Criação | Krita (+ pincéis David Revoy, Rakurri e GDQuest), Kdenlive, OBS Studio, GIMP, Inkscape, VLC, Aseprite (compilado do código-fonte) |
-| Áudio | PipeWire profissional, ajustes de latência do kernel, CPU em modo performance, Bitwig Studio, REAPER (com SWS, ReaPack e JSFX), plugins VST3/CLAP grátis, ToneLib-Zoom (via Distrobox) |
+| Áudio | PipeWire profissional, ajustes de latência do kernel, Bitwig Studio, REAPER (com SWS, ReaPack e JSFX), plugins VST3/CLAP grátis, ToneLib-Zoom (via Distrobox) |
 | Jogos | Steam, Heroic Games Launcher |
 
 Sempre aplicados (base): tema Nord do Cinnamon, ícones, cursor, fontes
@@ -71,8 +71,6 @@ Ajustes finos (tema, lista de ferramentas base, latência do áudio) ficam em
 
 - **Podman** remove o Docker (`docker.io`/`docker-ce`) se estiver instalado.
   O comando `docker` passa a usar o Podman.
-- **cpu_performance** deixa a CPU sempre na frequência máxima: bom para áudio,
-  ruim para bateria de notebook.
 - **Bitwig Studio**: a licença é ativada dentro do próprio app.
 - **Brave** (desligado por padrão): ao ligar `instalar_brave`, o
   `brave_debloat` aplica políticas oficiais que desligam Rewards, Wallet, VPN,

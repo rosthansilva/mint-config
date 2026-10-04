@@ -169,8 +169,8 @@
       command: grep -q "preempt=full threadirqs usbcore.autosuspend=-1" /etc/default/grub.d/99-audio-baixa-latencia.cfg
       changed_when: false
 
-    - name: Serviço de CPU em modo performance precisa estar habilitado
-      command: systemctl is-enabled cpu-performance.service
+    - name: Serviço antigo de CPU em modo performance não pode existir
+      command: test ! -e /etc/systemd/system/cpu-performance.service
       changed_when: false
 
     - name: qpwgraph precisa estar instalado

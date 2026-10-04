@@ -71,7 +71,6 @@ instalar_aseprite: true
 # Áudio / música
 configurar_audio_pro: true
 otimizar_latencia_audio: true
-cpu_performance: true
 instalar_bitwig: true
 instalar_reaper: true
 instalar_tonelib_zoom: true

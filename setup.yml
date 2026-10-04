@@ -55,7 +55,6 @@
     # --- Áudio / música ---
     configurar_audio_pro: true  # PipeWire com JACK, tempo real, baixa latência e qpwgraph
     otimizar_latencia_audio: true # Kernel: preempt=full, threadirqs, USB sem economia (vale após reiniciar)
-    cpu_performance: true       # CPU sempre em modo performance (gasta mais bateria em notebook)
     instalar_bitwig: true       # Bitwig Studio (DAW) — recomendado junto com o áudio pro
     bitwig_version: "6.1"
     instalar_reaper: true       # REAPER + SWS + ReaPack + pacotes JSFX, já no JACK/PipeWire (avaliação de 60 dias)
