@@ -99,7 +99,9 @@
       shell: |
         set -eu
         cd /tmp/plugin-{{ plugin.nome }}/*/
-        ./install.sh --quiet --without-32 \
+        # --as-root só quando o próprio usuário é root (ex.: container de
+        # teste); numa máquina normal o instalador roda como o usuário.
+        ./install.sh --quiet --without-32 {{ '--as-root' if ansible_user_id == 'root' else '' }} \
           --vstdir="$HOME/.vst" --vst3dir="$HOME/.vst3" --clapdir="$HOME/.clap"
       args:
         executable: /bin/bash

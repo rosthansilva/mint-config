@@ -234,8 +234,9 @@
     - name: Plugins dos sites dos fabricantes e novos do GitHub precisam estar instalados
       shell: |
         set -e
-        dpkg-query -W odin2-synth obxd nilsk1v chowphaser 2>&1 || dpkg -l | grep -iE "odin|obxd|k1v|centaur|phaser"
-        ls {{ ansible_env.HOME }}/.vst/Podolski* {{ ansible_env.HOME }}/.vst/TyrellN6* -d
+        dpkg -l | grep -iE "odin|obxd|k1v"
+        ls -d {{ ansible_env.HOME }}/.vst3/chow-phaser/*.vst3
+        ls -d {{ ansible_env.HOME }}/.vst3/Podolski.vst3 {{ ansible_env.HOME }}/.vst3/TyrellN6.vst3
         ls {{ ansible_env.HOME }}/.clap/graillon/*.clap
         test -z "$(find {{ ansible_env.HOME }}/.vst3/graillon {{ ansible_env.HOME }}/.clap/graillon -iname '*win*' -o -iname '*mac*' 2>/dev/null)"
         ls -d {{ ansible_env.HOME }}/.vst3/tal-reverb-4/*.vst3 {{ ansible_env.HOME }}/.vst3/flying-phaser/*.vst3

@@ -74,7 +74,7 @@
     # --- Efeitos criativos ---
     - { nome: gate12, ativo: "{{ vst_gate12 }}", repo: tiagolr/gate12, padrao: 'linux.*\.zip$', tipo: arquivo }
     - { nome: filtr, ativo: "{{ vst_filtr }}", repo: tiagolr/filtr, padrao: 'linux.*\.zip$', tipo: arquivo }
-    - { nome: chow-phaser, ativo: "{{ vst_chow_phaser }}", repo: jatinchowdhury18/ChowPhaser, padrao: 'Linux-x64-.*\.deb$', tipo: deb }
+    - { nome: chow-phaser, ativo: "{{ vst_chow_phaser }}", repo: jatinchowdhury18/ChowPhaser, padrao: 'Linux-x64-.*\.deb$', tipo: deb-extrair }
   loop_control:
     loop_var: plugin
     label: "{{ plugin.nome }}"
@@ -146,60 +146,72 @@
 # A página oficial de versões lista os builds no CDN da Decent Samples; pega
 # o de versão mais alta. Instala o VST3 em ~/.vst3/decentsampler.
 
-- name: "Consultar versões do DecentSampler"
-  uri:
-    url: https://store.decentsamples.com/downloads/decent-sampler/versions
-    return_content: yes
-  register: ds_pagina
+- name: "DecentSampler"
   when: vst_decentsampler | bool
-  tags: plugins
-
-- name: "Selecionar o build Linux mais recente do DecentSampler"
-  set_fact:
-    ds_url: >-
-      {{ ds_pagina.content
-         | regex_findall('https://cdn\\.decentsamples\\.com/production/builds/ds/[0-9.]+/Decent_Sampler-[0-9.]+-Linux-x86_64\\.tar\\.gz')
-         | unique | community.general.version_sort | last }}
-  when: vst_decentsampler | bool
-  tags: plugins
-
-- name: "Ler versão instalada do DecentSampler"
-  command: cat "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/decentsampler"
-  register: ds_versao
-  changed_when: false
-  failed_when: false
-  when: vst_decentsampler | bool
-  tags: plugins
-
-- name: "Instalar/atualizar DecentSampler ({{ ds_url | default('') | basename }})"
-  when:
-    - vst_decentsampler | bool
-    - ds_versao.stdout != (ds_url | basename)
   tags: plugins
   block:
-    - name: "Baixar e extrair o DecentSampler"
-      unarchive:
-        src: "{{ ds_url }}"
-        dest: /tmp
-        remote_src: yes
+    - name: "Consultar versões do DecentSampler"
+      uri:
+        url: https://store.decentsamples.com/downloads/decent-sampler/versions
+        return_content: yes
+      register: ds_pagina
+      when: vst_decentsampler | bool
+      tags: plugins
 
-    - name: "Copiar o VST3 do DecentSampler para ~/.vst3"
-      shell: |
-        set -eu
-        rm -rf "$HOME/.vst3/decentsampler"
-        mkdir -p "$HOME/.vst3/decentsampler"
-        cp -r "/tmp/{{ ds_url | basename | regex_replace('\\.tar\\.gz$', '') }}/DecentSampler.vst3" "$HOME/.vst3/decentsampler/"
+    - name: "Selecionar o build Linux mais recente do DecentSampler"
+      set_fact:
+        ds_url: >-
+          {{ ds_pagina.content
+             | regex_findall('https://cdn\.decentsamples\.com/production/builds/ds/[0-9.]+/Decent_Sampler-[0-9.]+-Linux-x86_64\.tar\.gz')
+             | unique | community.general.version_sort | last }}
+      when: vst_decentsampler | bool
+      tags: plugins
 
-    - name: "Registrar versão instalada do DecentSampler"
-      copy:
-        dest: "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/decentsampler"
-        content: "{{ ds_url | basename }}"
-        mode: '0644'
-  always:
-    - name: "Limpar arquivos temporários do DecentSampler"
-      file:
-        path: "/tmp/{{ ds_url | basename | regex_replace('\\.tar\\.gz$', '') }}"
-        state: absent
+    - name: "Ler versão instalada do DecentSampler"
+      command: cat "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/decentsampler"
+      register: ds_versao
+      changed_when: false
+      failed_when: false
+      when: vst_decentsampler | bool
+      tags: plugins
+
+    - name: "Instalar/atualizar DecentSampler ({{ ds_url | default('') | basename }})"
+      when:
+        - vst_decentsampler | bool
+        - ds_versao.stdout != (ds_url | basename)
+      tags: plugins
+      block:
+        - name: "Baixar e extrair o DecentSampler"
+          unarchive:
+            src: "{{ ds_url }}"
+            dest: /tmp
+            remote_src: yes
+
+        - name: "Copiar o VST3 do DecentSampler para ~/.vst3"
+          shell: |
+            set -eu
+            rm -rf "$HOME/.vst3/decentsampler"
+            mkdir -p "$HOME/.vst3/decentsampler"
+            cp -r "/tmp/{{ ds_url | basename | regex_replace('\.tar\.gz$', '') }}/DecentSampler.vst3" "$HOME/.vst3/decentsampler/"
+
+        - name: "Registrar versão instalada do DecentSampler"
+          copy:
+            dest: "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins/decentsampler"
+            content: "{{ ds_url | basename }}"
+            mode: '0644'
+      always:
+        - name: "Limpar arquivos temporários do DecentSampler"
+          file:
+            path: "/tmp/{{ ds_url | basename | regex_replace('\\.tar\\.gz$', '') }}"
+            state: absent
+  rescue:
+    - name: "DecentSampler falhou — seguindo com o resto"
+      debug:
+        msg: "ATENÇÃO: não foi possível instalar o DecentSampler. Veja o erro acima."
+
+    - name: "Anotar falha do DecentSampler para o resumo"
+      set_fact:
+        plugins_com_falha: "{{ (plugins_com_falha | default([])) + ['decentsampler'] }}"
 
 - name: "Resumo: plugins que não puderam ser instalados"
   debug:

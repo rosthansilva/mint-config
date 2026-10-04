@@ -69,7 +69,7 @@
     vst_odin2: true             # Odin 2: sintetizador semi-modular
     vst_obxd: true              # OB-Xd: emulação do Oberheim OB-X
     vst_nils_k1v: true          # Nils' K1v: emulação do Kawai K1 (rompler)
-    vst_podolski: true          # Podolski (u-he): sintetizador virtual analógico (VST2)
+    vst_podolski: true          # Podolski (u-he): sintetizador virtual analógico
     vst_tyrelln6: true          # TyrellN6 (u-he): sintetizador analógico — versão 3.0 em beta
     # Guitarra / perfis NAM
     vst_ratatouille: true       # Ratatouille: leitor de perfis .nam/AIDA-X + 2 IRs mixáveis (CLAP)

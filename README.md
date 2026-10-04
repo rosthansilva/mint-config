@@ -142,8 +142,8 @@ Não incluídos (dá para baixar à mão):
 - **yabridge** (plugins de Windows): hoje só funciona com o Wine 9.21, uma
   versão antiga e sem correções de segurança.
 
-Os plugins VST2 (Podolski, TyrellN6) ficam em `~/.vst`, que o Bitwig também
-procura.
+Os plugins da u-he (Podolski, TyrellN6) usam o instalador oficial deles:
+os dados ficam em `~/.u-he` e o VST3 em `~/.vst3`.
 
 ## Tags
 
