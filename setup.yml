@@ -28,6 +28,7 @@
     instalar_vscode: true       # Visual Studio Code (repositório oficial da Microsoft)
     instalar_podman: true       # Podman + podman-compose (substitui o Docker; remove o Docker se instalado)
     instalar_devcontainer: true # Template de devcontainer Laravel em ~/devcontainer-templates
+    instalar_vpn_azure: true    # VPN do Azure: OpenVPN + strongSwan no NetworkManager (o Azure VPN Client p/ Linux foi descontinuado)
     instalar_godot: true        # Godot Engine (última versão estável; integra com o VS Code se ele for instalado)
     godot_export_templates: true # Templates de exportação do Godot (~1,3 GB)
 
@@ -42,6 +43,7 @@
 
     # --- Criação e mídia ---
     instalar_krita: true        # Pintura digital
+    krita_pinceis: true         # Pincéis da comunidade: David Revoy, Rakurri (CC0) e GDQuest (CC-BY)
     instalar_kdenlive: true     # Edição de vídeo
     instalar_obs: true          # OBS Studio (gravação/stream, PPA oficial)
     instalar_gimp: true         # Edição de imagem
@@ -55,6 +57,7 @@
     cpu_performance: true       # CPU sempre em modo performance (gasta mais bateria em notebook)
     instalar_bitwig: true       # Bitwig Studio (DAW) — recomendado junto com o áudio pro
     bitwig_version: "6.1"
+    instalar_reaper: true       # REAPER + SWS + ReaPack + pacotes JSFX, já no JACK/PipeWire (avaliação de 60 dias)
     instalar_tonelib_zoom: true # Editor das pedaleiras Zoom (roda num Distrobox Ubuntu 22.04; ~500 MB)
 
     # --- Plugins de áudio (VST3/CLAP grátis, nativos de Linux) ---

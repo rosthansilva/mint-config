@@ -42,6 +42,16 @@
     label: "{{ item.arquivo }}"
   when: item.ativo | bool
 
+# REAPER instala o atalho na pasta do usuário (--integrate-user-desktop).
+- name: Criar launcher do REAPER no Plank
+  ansible.builtin.copy:
+    dest: "~/.config/plank/dock1/launchers/cockos-reaper.dockitem"
+    content: |
+      [PlankDockItemPreferences]
+      Launcher=file://{{ ansible_env.HOME }}/.local/share/applications/cockos-reaper.desktop
+    mode: '0644'
+  when: instalar_reaper | bool
+
 # Aseprite é compilado na pasta do usuário: o atalho também fica lá.
 - name: Criar launcher do Aseprite no Plank
   ansible.builtin.copy:

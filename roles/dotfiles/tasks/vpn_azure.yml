@@ -1,0 +1,38 @@
+---
+# VPN do Azure (Point-to-Site) no Linux.
+#
+# A Microsoft aposentou o "Azure VPN Client for Linux" em 31/08/2026 — o
+# pacote microsoft-azurevpnclient atual não tem mais o programa. As
+# alternativas oficialmente recomendadas, ambas com autenticação por
+# certificado, são:
+#   - OpenVPN   (gateway com túnel OpenVPN)
+#   - strongSwan (gateway com túnel IKEv2)
+# Instalamos as duas integradas ao NetworkManager, para importar o perfil
+# pela interface do Mint (Configurações de rede → VPN → Importar).
+# Atenção: autenticação por login Microsoft (Entra ID) não tem mais cliente
+# Linux suportado; nesse caso a TI precisa liberar autenticação por certificado.
+# Referência: learn.microsoft.com/azure/vpn-gateway/azure-vpn-client-linux-retirement
+
+- name: "Instalar clientes VPN suportados pelo Azure (OpenVPN e strongSwan)"
+  become: true
+  apt:
+    name:
+      - openvpn
+      - network-manager-openvpn
+      - network-manager-openvpn-gnome   # tela de configuração no Mint
+      - strongswan
+      - network-manager-strongswan
+      - libcharon-extra-plugins         # métodos de autenticação EAP/certificado
+      - libstrongswan-extra-plugins
+    state: present
+  register: vpn_pacotes
+  tags: vpn
+
+# O NetworkManager só enxerga plugins de VPN novos depois de reiniciar.
+# try-restart não faz nada se ele não estiver rodando (ex.: container).
+- name: "Recarregar o NetworkManager para reconhecer os plugins de VPN"
+  become: true
+  command: systemctl try-restart NetworkManager
+  when: vpn_pacotes is changed
+  failed_when: false
+  tags: vpn

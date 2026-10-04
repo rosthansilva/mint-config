@@ -53,10 +53,10 @@ comentário explicando o que é. Troque para `false` o que não quiser. O dock
 | Grupo | Itens |
 |---|---|
 | Terminal | zsh (Oh My Zsh + Starship), tmux, wezterm, fastfetch |
-| Desenvolvimento | VS Code, Podman + podman-compose, template de devcontainer, Godot (+ export templates e integração com o VS Code) |
+| Desenvolvimento | VS Code, Podman + podman-compose, template de devcontainer, Godot (+ export templates e integração com o VS Code), VPN do Azure (OpenVPN/strongSwan) |
 | Desktop | Plank, Flameshot (tecla Print), tema do Firefox, Brave, Timeshift, Free Download Manager e JDownloader (Flatpak) |
-| Criação | Krita, Kdenlive, OBS Studio, GIMP, Inkscape, VLC, Aseprite (compilado do código-fonte) |
-| Áudio | PipeWire profissional, ajustes de latência do kernel, CPU em modo performance, Bitwig Studio, plugins VST3/CLAP grátis, ToneLib-Zoom (via Distrobox) |
+| Criação | Krita (+ pincéis David Revoy, Rakurri e GDQuest), Kdenlive, OBS Studio, GIMP, Inkscape, VLC, Aseprite (compilado do código-fonte) |
+| Áudio | PipeWire profissional, ajustes de latência do kernel, CPU em modo performance, Bitwig Studio, REAPER (com SWS, ReaPack e JSFX), plugins VST3/CLAP grátis, ToneLib-Zoom (via Distrobox) |
 | Jogos | Steam, Heroic Games Launcher |
 
 Sempre aplicados (base): tema Nord do Cinnamon, ícones, cursor, fontes
@@ -74,10 +74,30 @@ Ajustes finos (tema, lista de ferramentas base, latência do áudio) ficam em
 - **cpu_performance** deixa a CPU sempre na frequência máxima: bom para áudio,
   ruim para bateria de notebook.
 - **Bitwig Studio**: a licença é ativada dentro do próprio app.
+- **Pincéis do Krita**: David Revoy e Rakurri são CC0 (domínio público); o
+  GDQuest é CC-BY 4.0 — em trabalhos publicados, dê crédito ao GDQuest.
 - **Aseprite**: é compilado na sua máquina a partir do código-fonte oficial
   (10–30 min na primeira vez e a cada versão nova). A licença do Aseprite
   permite compilar para uso pessoal, mas não redistribuir o programa
   compilado — não copie o binário para outras pessoas.
+
+## VPN do Azure
+
+A Microsoft **aposentou o Azure VPN Client para Linux em 31/08/2026** (o pacote
+`microsoft-azurevpnclient` hoje não instala nada). Com `instalar_vpn_azure: true`
+ficam instaladas as alternativas que a própria Microsoft recomenda, integradas
+ao gerenciador de redes do Mint:
+
+- **OpenVPN** — gateway com túnel OpenVPN + certificado: no pacote de perfil
+  baixado do portal do Azure, importe o `OpenVPN/vpnconfig.ovpn` em
+  *Configurações de rede → VPN → + → Importar de arquivo*;
+- **strongSwan** — gateway com túnel IKEv2 + certificado (pasta `Generic` do
+  pacote de perfil).
+
+O `azurevpnconfig.xml` era o formato do cliente aposentado. Se a VPN da empresa
+usa **login Microsoft (Entra ID)**, não há mais cliente Linux suportado: peça à
+TI a autenticação por certificado. Não guarde certificados ou chaves da VPN
+neste repositório.
 
 ## Áudio para o Bitwig
 
@@ -92,6 +112,22 @@ Com `configurar_audio_pro: true`:
 
 Com `otimizar_latencia_audio: true`, o kernel recebe `preempt=full threadirqs
 usbcore.autosuspend=-1` (vale após reiniciar).
+
+### REAPER
+
+Com `instalar_reaper: true`, o REAPER (última versão do site oficial) já abre
+pronto:
+
+- **áudio pelo JACK do PipeWire** (`linux_audio_mode=0`; sem `configurar_audio_pro`
+  usa PulseAudio). A latência segue o buffer do PipeWire (`pipewire_quantum`);
+- **backup automático a cada 5 minutos** (o padrão é 15) e projetos em 48 kHz;
+- **SWS** (centenas de ações extras) e **ReaPack** (gerenciador de pacotes —
+  *Extensions → ReaPack → Synchronize* para buscar scripts e temas);
+- **JSFX**: além dos de fábrica, os pacotes ReaTeam, Saike (Yutani, Taalman…),
+  tilr e Geraint Luff, em *FX → JS → <pacote>*.
+
+O REAPER é pago (US$ 60 na licença pessoal), com avaliação completa por 60
+dias; a licença é registrada dentro do próprio programa.
 
 ### Plugins (VST3/CLAP)
 
@@ -151,8 +187,8 @@ Para aplicar só uma parte: `./bootstrap.sh -- --tags <tag>[,<tag>]`.
 
 `theme` `icons` `cursors` `cinnamon` `ui` · `terminal` `terminal_theme` `zsh`
 `tmux` `wezterm` `fastfetch` · `git` `git_profiles` · `vscode` `podman`
-`devcontainer` `godot` · `apps` `aseprite` `flameshot` `firefox` `brave` `timeshift`
-`plank` `flatpak` · `audio` `latencia` `bitwig` `plugins` `tonelib_zoom` · `steam` `heroic`
+`devcontainer` `vpn` `godot` · `apps` `krita_pinceis` `aseprite` `flameshot` `firefox` `brave` `timeshift`
+`plank` `flatpak` · `audio` `latencia` `bitwig` `reaper` `plugins` `tonelib_zoom` · `steam` `heroic`
 
 As tasks `nala`, `git` e `fonts` rodam sempre.
 

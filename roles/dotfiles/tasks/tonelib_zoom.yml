@@ -183,4 +183,8 @@
     distrobox-export --app ToneLib-Zoom
   args:
     creates: "{{ ansible_env.HOME }}/.local/share/applications/tonelib-ToneLib-Zoom.desktop"
+  # O distrobox-export se recusa a rodar como root. Numa instalação normal
+  # o usuário nunca é root (o bootstrap.sh não deixa); só acontece no
+  # container de teste.
+  when: ansible_user_id != 'root'
   tags: tonelib_zoom

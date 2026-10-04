@@ -1,0 +1,48 @@
+---
+# Pacotes de pincéis da comunidade do Krita, todos com licença livre.
+# Ficam em ~/.local/share/krita/bundles — o Krita 5 carrega e ativa os
+# .bundle dessa pasta sozinho (testado: o pacote aparece ativo no
+# resourcecache.sqlite na primeira abertura).
+
+- name: "Garantir pastas de pincéis e de controle"
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ ansible_env.HOME }}/.local/share/krita/bundles"
+    - "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins"
+    - "{{ ansible_env.HOME }}/.cache/dotfiles/verificado"
+  tags: krita_pinceis
+
+# David Revoy (Pepper&Carrot): CC0 / domínio público. Novas versões saem em
+# davidrevoy.com com outro nome de arquivo — atualizar a URL quando sair.
+- name: "Instalar pincéis do David Revoy"
+  include_tasks:
+    file: plugin_url.yml
+    apply:
+      tags: krita_pinceis
+  loop:
+    - nome: krita-deevad
+      tipo: krita-bundle
+      url: https://www.peppercarrot.com/extras/resources/deevad-bundle_25.01.zip
+      antigo: "Deevad_*.bundle"
+  loop_control:
+    loop_var: plugin
+    label: "{{ plugin.nome }}"
+  tags: krita_pinceis
+
+- name: "Instalar pincéis do GitHub (última versão)"
+  include_tasks:
+    file: plugin_github.yml
+    apply:
+      tags: krita_pinceis
+  loop:
+    # Rakurri: CC0, pensado para desenho estilizado (86+ pincéis).
+    - { nome: krita-rakurri, repo: Rakurri/rakurri-brush-set-for-krita, padrao: '\.bundle$', tipo: krita-bundle, antigo: "Rakurri_Brush_Set_*.bundle" }
+    # GDQuest: CC-BY 4.0 (dar crédito ao GDQuest em trabalhos publicados).
+    - { nome: krita-gdquest, repo: GDQuest/krita-free-brushes, padrao: '\.bundle$', tipo: krita-bundle, antigo: "GDquest_*.bundle" }
+  loop_control:
+    loop_var: plugin
+    label: "{{ plugin.nome }}"
+  tags: krita_pinceis

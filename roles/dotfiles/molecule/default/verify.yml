@@ -216,7 +216,8 @@
       shell: |
         set -e
         {{ ansible_env.HOME }}/.local/bin/distrobox enter tonelib -- dpkg-query -W tonelib-zoom
-        test -f {{ ansible_env.HOME }}/.local/share/applications/tonelib-ToneLib-Zoom.desktop
+        # o atalho no menu só é exportado para usuário não-root
+        if [ "$(id -u)" != 0 ]; then test -f {{ ansible_env.HOME }}/.local/share/applications/tonelib-ToneLib-Zoom.desktop; fi
       changed_when: false
 
     - name: Airwindows (VST3 + CLAP), DecentSampler e efeitos novos precisam estar instalados
@@ -252,4 +253,32 @@
         test -f {{ ansible_env.HOME }}/.local/opt/aseprite/data/icons/ase256.png
         test -f {{ ansible_env.HOME }}/.local/share/applications/aseprite.desktop
         test -f {{ ansible_env.HOME }}/.config/plank/dock1/launchers/aseprite.dockitem
+      changed_when: false
+
+    - name: REAPER precisa estar instalado com SWS, ReaPack, JSFX e configuração otimizada
+      shell: |
+        set -e
+        test -x {{ ansible_env.HOME }}/.local/opt/REAPER/reaper
+        test -f {{ ansible_env.HOME }}/.local/share/applications/cockos-reaper.desktop
+        test -f {{ ansible_env.HOME }}/.config/plank/dock1/launchers/cockos-reaper.dockitem
+        ls {{ ansible_env.HOME }}/.config/REAPER/UserPlugins/reaper_sws-x86_64.so {{ ansible_env.HOME }}/.config/REAPER/UserPlugins/reaper_reapack-x86_64.so
+        for p in reateam-jsfx saike tilr geraintluff; do test -n "$(ls -A {{ ansible_env.HOME }}/.config/REAPER/Effects/$p)"; done
+        ini={{ ansible_env.HOME }}/.config/REAPER/reaper.ini
+        grep -qx 'linux_audio_mode=0' $ini
+        grep -qx 'autosaveint=5' $ini
+        grep -qx 'projsrate=48000' $ini
+        grep -qx 'projsrateuse=1' $ini
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Pincéis da comunidade precisam estar na pasta de bundles do Krita
+      shell: |
+        set -e
+        b={{ ansible_env.HOME }}/.local/share/krita/bundles
+        ls $b/Deevad_*.bundle $b/Rakurri_Brush_Set_*.bundle $b/GDquest_*.bundle
+      changed_when: false
+
+    - name: Clientes VPN suportados pelo Azure precisam estar instalados
+      command: dpkg-query -W openvpn network-manager-openvpn-gnome strongswan network-manager-strongswan
       changed_when: false

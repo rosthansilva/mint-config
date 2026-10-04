@@ -10,6 +10,12 @@
 #           arquivo → zip/tar/7z; VST3 vai para ~/.vst3/<nome>/ e CLAP para
 #                    ~/.clap/<nome>/ (pastas que o Bitwig já procura)
 #           uhe    → instalador oficial da u-he (install.sh --quiet)
+#           reaper → tarball oficial do REAPER (install-reaper.sh)
+#           reaper-ext → extensão do REAPER (.so em UserPlugins: SWS, ReaPack)
+#           jsfx   → pacote de efeitos JS do REAPER (Effects/<nome>)
+#           krita-bundle → pacote de pincéis (.bundle, solto ou num .zip) em
+#                    ~/.local/share/krita/bundles, que o Krita ativa sozinho;
+#                    "antigo" (glob) apaga a versão anterior do mesmo pacote
 #           deb-extrair → .deb com dependências erradas (ex.: pede pacotes
 #                    -dev que não existem no Mint 22): o plugin é extraído
 #                    do .deb e copiado como "arquivo", sem passar pelo apt
@@ -46,7 +52,7 @@
         state: "{{ item }}"
         mode: '0755'
       loop: [absent, directory]
-      when: plugin.tipo in ['arquivo', 'uhe', 'deb-extrair']
+      when: plugin.tipo in ['arquivo', 'uhe', 'deb-extrair', 'reaper', 'jsfx', 'krita-bundle']
 
     - name: "[{{ plugin.nome }}] Extrair arquivo (zip/tar)"
       unarchive:
@@ -54,7 +60,7 @@
         dest: "/tmp/plugin-{{ plugin.nome }}"
         remote_src: yes
       when:
-        - plugin.tipo in ['arquivo', 'uhe']
+        - plugin.tipo in ['arquivo', 'uhe', 'reaper', 'jsfx'] or (plugin.tipo == 'krita-bundle' and plugin_arquivo.endswith('.zip'))
         - not plugin_arquivo.endswith('.7z')
 
     - name: "[{{ plugin.nome }}] Extrair conteúdo do .deb (sem instalar)"
@@ -106,6 +112,56 @@
       args:
         executable: /bin/bash
       when: plugin.tipo == 'uhe'
+
+    # REAPER: instalador oficial, só para o usuário (sem root), com atalho
+    # no menu. A configuração fica em ~/.config/REAPER.
+    - name: "[{{ plugin.nome }}] Rodar instalador do REAPER"
+      shell: |
+        set -eu
+        cd /tmp/plugin-{{ plugin.nome }}/*/
+        ./install-reaper.sh --install "$HOME/.local/opt" --integrate-user-desktop --quiet
+      args:
+        executable: /bin/bash
+      when: plugin.tipo == 'reaper'
+
+    - name: "[{{ plugin.nome }}] Instalar extensão do REAPER em UserPlugins"
+      copy:
+        src: "/tmp/{{ plugin_arquivo }}"
+        dest: "{{ ansible_env.HOME }}/.config/REAPER/UserPlugins/{{ plugin_arquivo }}"
+        remote_src: yes
+        mode: '0755'
+      when: plugin.tipo == 'reaper-ext'
+
+    # O zip do GitHub tem uma pasta "<repo>-master/": o conteúdo dela vai
+    # para Effects/<nome>, onde o REAPER lista os JSFX.
+    - name: "[{{ plugin.nome }}] Instalar pacote JSFX em ~/.config/REAPER/Effects"
+      shell: |
+        set -eu
+        destino="$HOME/.config/REAPER/Effects/{{ plugin.nome }}"
+        rm -rf "$destino"; mkdir -p "$destino"
+        cp -r /tmp/plugin-{{ plugin.nome }}/*/. "$destino/"
+      args:
+        executable: /bin/bash
+      when: plugin.tipo == 'jsfx'
+
+    - name: "[{{ plugin.nome }}] Instalar pacote de pincéis no Krita"
+      shell: |
+        set -eu
+        shopt -s nullglob
+        destino="$HOME/.local/share/krita/bundles"
+        mkdir -p "$destino"
+        rm -f "$destino"/{{ plugin.antigo }}
+        if [[ "{{ plugin_arquivo }}" == *.bundle ]]; then
+          cp "/tmp/{{ plugin_arquivo }}" "$destino/"
+        else
+          bundles=(/tmp/plugin-{{ plugin.nome }}/**/*.bundle /tmp/plugin-{{ plugin.nome }}/*.bundle)
+          # não usar a contagem de array do bash: chave + cerquilha abre comentário no Jinja
+          test -n "${bundles[0]:-}"
+          cp "${bundles[@]}" "$destino/"
+        fi
+      args:
+        executable: /bin/bash
+      when: plugin.tipo == 'krita-bundle'
 
     - name: "[{{ plugin.nome }}] Registrar versão instalada"
       copy:

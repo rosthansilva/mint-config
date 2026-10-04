@@ -1,0 +1,93 @@
+---
+# REAPER (DAW) pronto para produção:
+#   - instalado do tarball oficial (reaper.fm) em ~/.local/opt/REAPER;
+#   - áudio pelo JACK do PipeWire (precisa de configurar_audio_pro);
+#   - extensões SWS e ReaPack;
+#   - pacotes JSFX da comunidade (os JSFX de fábrica já vêm com o REAPER);
+#   - backup automático a cada 5 min e projetos em 48 kHz.
+# Licença: o REAPER é pago (US$ 60 pessoal) com avaliação completa de 60
+# dias; a licença é registrada dentro do próprio app.
+
+- name: "Garantir pastas do REAPER e de controle"
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ ansible_env.HOME }}/.config/REAPER/UserPlugins"
+    - "{{ ansible_env.HOME }}/.config/REAPER/Effects"
+    - "{{ ansible_env.HOME }}/.local/share/dotfiles/plugins"
+    - "{{ ansible_env.HOME }}/.cache/dotfiles/verificado"
+  tags: reaper
+
+# Mesma mecânica dos plugins de áudio: última versão, cache de 24h e
+# falha isolada (registrada em plugins_com_falha).
+- name: "Instalar REAPER e pacotes JSFX"
+  include_tasks:
+    file: plugin_url.yml
+    apply:
+      tags: reaper
+  loop:
+    - nome: reaper
+      tipo: reaper
+      pagina: https://www.reaper.fm/download.php
+      regex: 'files/[0-9.x]+/reaper[0-9]+_linux_x86_64\.tar\.xz'
+      base: https://www.reaper.fm/
+    # Coleção da comunidade (a mesma do repositório padrão do ReaPack).
+    - { nome: reateam-jsfx, tipo: jsfx, url: "https://github.com/ReaTeam/JSFX/archive/refs/heads/master.zip" }
+    # Saike: sintetizadores e efeitos (Yutani, Taalman, etc.).
+    - { nome: saike, tipo: jsfx, url: "https://github.com/JoepVanlier/JSFX/archive/refs/heads/master.zip" }
+    # tilr: gates, filtros e utilitários.
+    - { nome: tilr, tipo: jsfx, url: "https://github.com/tiagolr/tilr_jsfx/archive/refs/heads/master.zip" }
+    # Geraint Luff: reverbs e efeitos criativos.
+    - { nome: geraintluff, tipo: jsfx, url: "https://github.com/geraintluff/jsfx/archive/refs/heads/master.zip" }
+  loop_control:
+    loop_var: plugin
+    label: "{{ plugin.nome }}"
+  tags: reaper
+
+- name: "Instalar extensões SWS e ReaPack"
+  include_tasks:
+    file: plugin_github.yml
+    apply:
+      tags: reaper
+  loop:
+    # SWS: centenas de ações extras para edição rápida.
+    - { nome: sws, repo: reaper-oss/sws, padrao: 'reaper_sws-x86_64\.so$', tipo: reaper-ext }
+    # ReaPack: gerenciador de pacotes (scripts, JSFX, temas) dentro do REAPER.
+    - { nome: reapack, repo: cfillion/reapack, padrao: 'reaper_reapack-x86_64\.so$', tipo: reaper-ext }
+  loop_control:
+    loop_var: plugin
+    label: "{{ plugin.nome }}"
+  tags: reaper
+
+# Chaves conferidas no próprio REAPER 7.81: os valores padrão foram lidos
+# com a API (SNM_GetIntConfigVar) e o modo de áudio foi testado — com
+# linux_audio_mode=0 o REAPER carrega a libjack do PipeWire.
+# O REAPER só regrava no reaper.ini o que muda; estas chaves são mantidas.
+- name: "Otimizar configuração do REAPER (áudio, backup, taxa de amostragem)"
+  community.general.ini_file:
+    path: "{{ ansible_env.HOME }}/.config/REAPER/reaper.ini"
+    section: REAPER
+    option: "{{ item.chave }}"
+    value: "{{ item.valor }}"
+    no_extra_spaces: true
+    mode: '0644'
+  loop:
+    # 0 = JACK (servido pelo pipewire-jack do audio.yml); sem o áudio pro,
+    # 3 = PulseAudio (no Mint também atendido pelo PipeWire). Testado.
+    - chave: linux_audio_mode
+      valor: "{{ '0' if configurar_audio_pro | bool else '3' }}"
+      desc: "{{ 'JACK via PipeWire' if configurar_audio_pro | bool else 'PulseAudio via PipeWire' }}"
+    - { chave: autosaveint, valor: "5", desc: "backup automático a cada 5 min (padrão: 15)" }
+    - { chave: projsrate, valor: "{{ pipewire_sample_rate }}", desc: "projetos na mesma taxa do PipeWire" }
+    - { chave: projsrateuse, valor: "1", desc: "aplicar a taxa de amostragem do projeto" }
+  loop_control:
+    label: "{{ item.chave }}={{ item.valor }} ({{ item.desc }})"
+  tags: reaper
+
+- name: "Resumo: itens do REAPER que não puderam ser instalados"
+  debug:
+    msg: "Com problema: {{ plugins_com_falha | join(', ') }}. Rode o playbook de novo mais tarde."
+  when: plugins_com_falha | default([]) | length > 0
+  tags: reaper

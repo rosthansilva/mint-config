@@ -97,6 +97,10 @@
   when: instalar_vscode | bool
   tags: vscode
 
+- import_tasks: vpn_azure.yml
+  when: instalar_vpn_azure | bool
+  tags: vpn
+
 - import_tasks: devcontainer.yml
   when: instalar_devcontainer | bool
   tags: devcontainer
@@ -111,6 +115,10 @@
 
 - import_tasks: apps.yml
   tags: apps
+
+- import_tasks: krita_pinceis.yml
+  when: instalar_krita | bool and krita_pinceis | bool
+  tags: krita_pinceis
 
 - import_tasks: aseprite.yml
   when: instalar_aseprite | bool
@@ -146,6 +154,10 @@
 - import_tasks: bitwig.yml
   when: instalar_bitwig | bool
   tags: bitwig
+
+- import_tasks: reaper.yml
+  when: instalar_reaper | bool
+  tags: reaper
 
 - import_tasks: tonelib_zoom.yml
   when: instalar_tonelib_zoom | bool

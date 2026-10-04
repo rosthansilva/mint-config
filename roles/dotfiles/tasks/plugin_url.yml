@@ -49,5 +49,9 @@
   include_tasks: plugin_instalar.yml
   vars:
     plugin_download_url: "{{ plugin_link }}"
-    plugin_arquivo: "{{ plugin_link | regex_replace('\\?.*$', '') | basename | urldecode }}"
+    # Pacotes JSFX vêm da branch master (sem número de versão): a data entra
+    # no nome para que sejam atualizados quando o cache de 24h expira.
+    plugin_arquivo: >-
+      {{ (plugin.nome ~ '-' ~ ansible_date_time.date ~ '.zip') if plugin.tipo == 'jsfx'
+         else (plugin_link | regex_replace('\?.*$', '') | basename | urldecode) }}
   when: plugin_verificar | bool

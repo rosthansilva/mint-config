@@ -44,6 +44,7 @@ instalar_fastfetch: true
 instalar_vscode: true
 instalar_podman: true
 instalar_devcontainer: true
+instalar_vpn_azure: true
 instalar_godot: true
 godot_export_templates: true
 
@@ -58,6 +59,7 @@ instalar_jdownloader: true
 
 # Criação e mídia
 instalar_krita: true
+krita_pinceis: true
 instalar_kdenlive: true
 instalar_obs: true
 instalar_gimp: true
@@ -70,6 +72,7 @@ configurar_audio_pro: true
 otimizar_latencia_audio: true
 cpu_performance: true
 instalar_bitwig: true
+instalar_reaper: true
 instalar_tonelib_zoom: true
 
 # Plugins de áudio (VST3/CLAP nativos para Linux, gratuitos)
