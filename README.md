@@ -74,6 +74,10 @@ Ajustes finos (tema, lista de ferramentas base, latência do áudio) ficam em
 - **cpu_performance** deixa a CPU sempre na frequência máxima: bom para áudio,
   ruim para bateria de notebook.
 - **Bitwig Studio**: a licença é ativada dentro do próprio app.
+- **Brave** (desligado por padrão): ao ligar `instalar_brave`, o
+  `brave_debloat` aplica políticas oficiais que desligam Rewards, Wallet, VPN,
+  IA (Leo), News, Talk, Playlist e telemetria — confira em `brave://policy`.
+  A lista fica em `brave_politicas` (`roles/dotfiles/defaults/main.yml`).
 - **Pincéis do Krita**: David Revoy e Rakurri são CC0 (domínio público); o
   GDQuest é CC-BY 4.0 — em trabalhos publicados, dê crédito ao GDQuest.
 - **Aseprite**: é compilado na sua máquina a partir do código-fonte oficial

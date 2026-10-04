@@ -53,6 +53,7 @@ instalar_plank: true
 instalar_flameshot: true
 instalar_firefox_tema: true
 instalar_brave: false
+brave_debloat: true
 instalar_timeshift: true
 instalar_fdm: true
 instalar_jdownloader: true
@@ -132,6 +133,24 @@ atualizacoes_intervalo_horas: 24
 dotfiles_forcar_atualizacao: false
 
 bitwig_version: "6.1"
+
+# Debloat do Brave: políticas oficiais (nomes conferidos no brave-core).
+# true/false conforme o nome da política: "...Disabled: true" desliga,
+# "...Enabled: false" desliga. Tor, Speedreader e Shields continuam ativos.
+brave_politicas:
+  BraveRewardsDisabled: true        # Brave Rewards / anúncios BAT
+  BraveWalletDisabled: true         # carteira cripto e web3
+  BraveVPNDisabled: true            # VPN paga do Brave
+  BraveAIChatEnabled: false         # assistente de IA (Leo)
+  BraveLocalAIEnabled: false        # IA local
+  BraveNewsDisabled: true           # notícias na nova aba
+  BraveTalkDisabled: true           # videochamadas Brave Talk
+  BravePlaylistEnabled: false       # Playlist
+  BraveStatsPingEnabled: false      # ping de estatísticas de uso
+  BraveP3AEnabled: false            # telemetria P3A
+  BraveWebDiscoveryEnabled: false   # Web Discovery Project
+  IPFSEnabled: false                # IPFS
+  MetricsReportingEnabled: false    # relatórios de uso/falhas (política do Chromium)
 
 # Latência = quantum / sample_rate (256 / 48000 ≈ 5,3 ms)
 pipewire_sample_rate: 48000

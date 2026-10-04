@@ -250,15 +250,28 @@
 
 - name: "Listar extensões instaladas no VS Code"
   command: code --list-extensions
+  # Sem efeito no Mint; evita a pergunta interativa do "code" quando o kernel
+  # é do WSL (ex.: container de teste rodando no Windows).
+  environment:
+    DONT_PROMPT_WSL_INSTALL: "1"
   register: godot_code_ext
   changed_when: false
-  when: instalar_vscode | bool
+  # O VS Code não roda como root sem --no-sandbox/--user-data-dir. O usuário
+  # normal nunca é root (o bootstrap.sh não deixa); só no container de teste.
+  when:
+    - instalar_vscode | bool
+    - ansible_user_id != 'root'
   tags: godot
 
 - name: "Instalar extensão godot-tools no VS Code"
   command: code --install-extension geequlim.godot-tools
+  # Sem efeito no Mint; evita a pergunta interativa do "code" quando o kernel
+  # é do WSL (ex.: container de teste rodando no Windows).
+  environment:
+    DONT_PROMPT_WSL_INSTALL: "1"
   when:
     - instalar_vscode | bool
+    - ansible_user_id != 'root'
     - "'geequlim.godot-tools' not in (godot_code_ext.stdout | lower)"
   tags: godot
 

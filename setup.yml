@@ -36,7 +36,8 @@
     instalar_plank: true        # Dock Plank com tema Nord e atalhos dos apps escolhidos
     instalar_flameshot: true    # Flameshot + tecla Print abrindo a captura
     instalar_firefox_tema: true # Tema Nordic no Firefox
-    instalar_brave: false       # Navegador Brave
+    instalar_brave: false       # Navegador Brave (repositório oficial)
+    brave_debloat: true         # Se instalar o Brave: desliga Rewards, Wallet, VPN, IA (Leo), News, telemetria...
     instalar_timeshift: true    # Snapshots do sistema (Timeshift)
     instalar_fdm: true          # Free Download Manager (Flatpak, verificado pelo desenvolvedor)
     instalar_jdownloader: true  # JDownloader 2 (Flatpak mantido pela comunidade)

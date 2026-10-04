@@ -202,7 +202,7 @@
       changed_when: false
 
     - name: Plugins instalados por .deb e apt precisam estar presentes
-      command: dpkg-query -W surge-xt byod chowtapemodel chowmultitool dragonfly-reverb-vst3 zam-plugins
+      command: dpkg-query -W surge-xt byod chowtape chowmultitool chowkick proteus dragonfly-reverb-vst3 zam-plugins
       changed_when: false
 
     - name: Free Download Manager e JDownloader precisam estar instalados (Flatpak)
@@ -281,4 +281,12 @@
 
     - name: Clientes VPN suportados pelo Azure precisam estar instalados
       command: dpkg-query -W openvpn network-manager-openvpn-gnome strongswan network-manager-strongswan
+      changed_when: false
+
+    - name: Brave precisa estar instalado com as políticas de debloat (quando ligado)
+      shell: |
+        set -e
+        if dpkg-query -W brave-browser >/dev/null 2>&1; then
+          python3 -c "import json; d=json.load(open('/etc/brave/policies/managed/debloat.json')); assert d['BraveRewardsDisabled'] is True and d['BraveAIChatEnabled'] is False"
+        fi
       changed_when: false

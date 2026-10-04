@@ -1,39 +1,71 @@
 ---
-- name: "Instalar dependências (curl)"
-  become: true
-  command: nala install -y curl
-  register: curl_install
-  changed_when: "'Installing' in curl_install.stdout"
-  tags: brave
+# Brave pelo repositório oficial (mesmo conteúdo do brave-browser.sources que
+# o Brave publica) + "debloat" opcional por políticas.
+#
+# O debloat usa as políticas oficiais do Brave (as mesmas que empresas usam):
+# um JSON em /etc/brave/policies/managed/. Sobrevive a atualizações e aparece
+# em brave://policy. Os nomes foram conferidos nas definições do código-fonte
+# (brave-core: components/policy/.../BraveSoftware) e todos valem no Linux.
+# A lista fica em brave_politicas (defaults/main.yml) para ajustar.
 
-- name: "Baixar chave GPG oficial do Brave"
+- name: "Baixar chave oficial do repositório do Brave"
   become: true
   get_url:
     url: https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
     dest: /usr/share/keyrings/brave-browser-archive-keyring.gpg
     mode: '0644'
-    force: yes
   tags: brave
 
-- name: "Adicionar repositório oficial do Brave"
+- name: "Remover repositório antigo do Brave (formato .list)"
   become: true
-  apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg arch=amd64] https://brave-browser-apt-release.s3.brave.com/ stable main"
-    filename: brave-browser-release
+  file:
+    path: /etc/apt/sources.list.d/brave-browser-release.list
+    state: absent
+  tags: brave
+
+- name: "Adicionar repositório oficial do Brave (deb822)"
+  become: true
+  deb822_repository:
+    name: brave-browser
+    types: deb
+    uris: https://brave-browser-apt-release.s3.brave.com
+    suites: stable
+    components: main
+    architectures: amd64
+    signed_by: /usr/share/keyrings/brave-browser-archive-keyring.gpg
+  register: brave_repo
+  tags: brave
+
+- name: "Instalar Brave"
+  become: true
+  apt:
+    name: brave-browser
     state: present
-    update_cache: no # IMPORTANTE: Não atualiza aqui para não travar
+    update_cache: "{{ brave_repo is changed }}"
   tags: brave
 
-- name: "Forçar atualização do APT (Ignorando falhas de mirrors)"
+- name: "Garantir pasta de políticas do Brave"
   become: true
-  # Aqui está o segredo: Se o servidor da UMinho falhar, o Ansible IGNORA e continua.
-  command: apt-get update
-  failed_when: false 
+  file:
+    path: /etc/brave/policies/managed
+    state: directory
+    mode: '0755'
+  when: brave_debloat | bool
   tags: brave
 
-- name: "Instalar Brave Browser (Finalmente)"
+- name: "Aplicar debloat do Brave (políticas)"
   become: true
-  command: nala install -y brave-browser
-  register: brave_install
-  changed_when: "'Installing' in brave_install.stdout"
+  copy:
+    dest: /etc/brave/policies/managed/debloat.json
+    content: "{{ brave_politicas | to_nice_json(indent=2) }}\n"
+    mode: '0644'
+  when: brave_debloat | bool
+  tags: brave
+
+- name: "Remover debloat do Brave (toggle desligado)"
+  become: true
+  file:
+    path: /etc/brave/policies/managed/debloat.json
+    state: absent
+  when: not (brave_debloat | bool)
   tags: brave
